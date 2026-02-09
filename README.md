@@ -7,7 +7,9 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - npm依存なし
 
 ## 使い方
-- 実行形式: `node lanscape.js <segments.txt> [space.csv]`
+- 対話式（デフォルト）: `node lanscape.js`
+	- 初回は設定ファイル作成や samples から入力ファイル生成を案内します。
+- 実行形式（非対話）: `node lanscape.js <segments.txt> [space.csv]`
 - 例: `node lanscape.js samples/segments.txt samples/space.csv`
 
 ### オプション
@@ -16,6 +18,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--dns-concurrency <n>` rDNS並列（既定 30）
 - `--no-dns` rDNSを無効化
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
+- `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 
 ## 入力ファイル
 ### segments.txt（必須）

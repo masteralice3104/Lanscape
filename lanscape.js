@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const readline = require("readline");
 const dns = require("dns").promises;
 const { spawn } = require("child_process");
 
@@ -10,16 +11,19 @@ function fatal(message) {
   process.exit(1);
 }
 
+const DEFAULT_OPTIONS = {
+  timeout: 1000,
+  pingConcurrency: 80,
+  dnsConcurrency: 30,
+  dnsEnabled: true,
+  format: "csv",
+  segmentsPath: null,
+  spacePath: null,
+};
+
 function parseArgs(argv) {
-  const options = {
-    timeout: 1000,
-    pingConcurrency: 80,
-    dnsConcurrency: 30,
-    dnsEnabled: true,
-    format: "csv",
-    segmentsPath: null,
-    spacePath: null,
-  };
+  const options = { ...DEFAULT_OPTIONS };
+  let configPath = null;
 
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
@@ -52,6 +56,9 @@ function parseArgs(argv) {
         case "--format":
           options.format = takeValue();
           break;
+        case "--config":
+          configPath = takeValue();
+          break;
         default:
           fatal(`不明なオプションです: ${flag}`);
       }
@@ -60,15 +67,20 @@ function parseArgs(argv) {
     }
   }
 
-  if (positional.length === 0) {
-    fatal("segments.txt のパスが必要です。");
-  }
   if (positional.length > 2) {
     fatal("引数が多すぎます。<segments.txt> [space.csv] のみ指定してください。");
   }
 
   options.segmentsPath = positional[0];
   options.spacePath = positional[1] || null;
+
+  return { options, configPath, positionalCount: positional.length };
+}
+
+function validateOptions(options) {
+  if (!options.segmentsPath) {
+    fatal("segments.txt のパスが必要です。");
+  }
 
   if (!Number.isFinite(options.timeout) || options.timeout <= 0) {
     fatal("--timeout は正の数値で指定してください。");
@@ -84,6 +96,192 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function fileExists(filePath) {
+  try {
+    return fs.existsSync(filePath);
+  } catch (error) {
+    return false;
+  }
+}
+
+function createPrompt() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const ask = (question, defaultValue) =>
+    new Promise((resolve) => {
+      const suffix = defaultValue !== undefined && defaultValue !== "" ? ` [${defaultValue}]` : "";
+      rl.question(`${question}${suffix}: `, (answer) => {
+        const trimmed = answer.trim();
+        if (trimmed === "" && defaultValue !== undefined) {
+          resolve(String(defaultValue));
+        } else {
+          resolve(trimmed);
+        }
+      });
+    });
+
+  const close = () => rl.close();
+
+  return { ask, close };
+}
+
+async function askYesNo(prompt, question, defaultYes) {
+  const hint = defaultYes ? "Y/n" : "y/N";
+  while (true) {
+    const answer = (await prompt.ask(`${question} (${hint})`, "")).toLowerCase();
+    if (!answer) return Boolean(defaultYes);
+    if (["y", "yes"].includes(answer)) return true;
+    if (["n", "no"].includes(answer)) return false;
+  }
+}
+
+async function askNumber(prompt, question, defaultValue) {
+  while (true) {
+    const answer = await prompt.ask(question, String(defaultValue));
+    const value = Number(answer);
+    if (Number.isFinite(value) && value > 0) return value;
+    process.stderr.write("数値（正の値）を入力してください。\n");
+  }
+}
+
+function loadConfig(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch (error) {
+    fatal(`設定ファイルを読み込めません: ${filePath}`);
+  }
+}
+
+function saveConfig(filePath, options) {
+  const payload = {
+    segmentsPath: options.segmentsPath,
+    spacePath: options.spacePath,
+    timeout: options.timeout,
+    pingConcurrency: options.pingConcurrency,
+    dnsConcurrency: options.dnsConcurrency,
+    dnsEnabled: options.dnsEnabled,
+    format: options.format,
+  };
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+  } catch (error) {
+    fatal(`設定ファイルを書き込めません: ${filePath}`);
+  }
+}
+
+function applyConfig(options, config, override) {
+  const applyValue = (key) => {
+    if (config[key] === undefined) return;
+    if (override || options[key] === null || options[key] === undefined) {
+      options[key] = config[key];
+    }
+  };
+
+  applyValue("segmentsPath");
+  applyValue("spacePath");
+  applyValue("timeout");
+  applyValue("pingConcurrency");
+  applyValue("dnsConcurrency");
+  applyValue("dnsEnabled");
+  applyValue("format");
+
+  return options;
+}
+
+async function ensureSampleFiles(prompt, targetDir) {
+  const sampleDir = path.join(__dirname, "samples");
+  const sampleFiles = [
+    { name: "segments.txt", fallback: "LAN 192.168.100.0/24\n" },
+    { name: "space.csv", fallback: "ip,user_space,manual_name\n" },
+  ];
+
+  for (const file of sampleFiles) {
+    const destPath = path.join(targetDir, file.name);
+    const sourcePath = path.join(sampleDir, file.name);
+    if (fileExists(destPath)) {
+      const overwrite = await askYesNo(prompt, `${file.name} を上書きしますか`, false);
+      if (!overwrite) continue;
+    }
+    let content = file.fallback;
+    if (fileExists(sourcePath)) {
+      content = readTextFile(sourcePath, `samples/${file.name}`);
+    }
+    fs.writeFileSync(destPath, content, "utf8");
+  }
+}
+
+async function interactiveSetup(baseOptions, configPath) {
+  const prompt = createPrompt();
+  try {
+    process.stderr.write("対話式セットアップを開始します。\n");
+    const hasConfig = fileExists(configPath);
+    if (hasConfig) {
+      const useConfig = await askYesNo(prompt, `既存の設定ファイルを使用しますか (${configPath})`, true);
+      if (useConfig) {
+        const config = loadConfig(configPath);
+        return applyConfig({ ...baseOptions }, config, true);
+      }
+    }
+
+    const wantSamples = await askYesNo(prompt, "samples から入力ファイルを作成しますか", true);
+    if (wantSamples) {
+      await ensureSampleFiles(prompt, process.cwd());
+    }
+
+    const defaultSegments = fileExists(path.join(process.cwd(), "segments.txt"))
+      ? "segments.txt"
+      : "";
+    const segmentsPath = await prompt.ask("segments.txt のパス", defaultSegments || undefined);
+    const defaultSpace = fileExists(path.join(process.cwd(), "space.csv")) ? "space.csv" : "";
+    const spacePath = await prompt.ask("space.csv のパス（不要なら空欄）", defaultSpace || "");
+
+    const timeout = await askNumber(prompt, "ping タイムアウト(ms)", baseOptions.timeout);
+    const pingConcurrency = await askNumber(prompt, "ping 並列数", baseOptions.pingConcurrency);
+    const dnsConcurrency = await askNumber(prompt, "rDNS 並列数", baseOptions.dnsConcurrency);
+    const dnsEnabled = await askYesNo(prompt, "rDNS を有効にしますか", baseOptions.dnsEnabled);
+
+    const options = {
+      ...baseOptions,
+      segmentsPath: segmentsPath || null,
+      spacePath: spacePath || null,
+      timeout,
+      pingConcurrency,
+      dnsConcurrency,
+      dnsEnabled,
+    };
+
+    const save = await askYesNo(prompt, `設定を保存しますか (${configPath})`, true);
+    if (save) {
+      saveConfig(configPath, options);
+    }
+
+    return options;
+  } finally {
+    prompt.close();
+  }
+}
+
+async function resolveOptions(argv) {
+  const parsed = parseArgs(argv);
+  const configPath = parsed.configPath || path.join(process.cwd(), "lanscape.config.json");
+
+  if (parsed.positionalCount === 0) {
+    const interactive = await interactiveSetup(parsed.options, configPath);
+    return validateOptions(interactive);
+  }
+
+  if (parsed.configPath) {
+    const config = loadConfig(configPath);
+    applyConfig(parsed.options, config, false);
+  }
+
+  return validateOptions(parsed.options);
 }
 
 function readTextFile(filePath, label) {
@@ -293,7 +491,7 @@ async function reverseDns(ip) {
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  const options = await resolveOptions(process.argv.slice(2));
   const segmentsContent = readTextFile(options.segmentsPath, "segments.txt");
   const segments = parseSegments(segmentsContent);
   const spaceMap = options.spacePath
