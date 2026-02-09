@@ -817,6 +817,28 @@ function enumerateHosts(ipInt, prefix) {
 
   let start = network;
   let end = broadcast;
+  if (prefix <= 24) {
+    start = network + 1;
+    end = broadcast - 1;
+  }
+
+  if (start > end) {
+    return [];
+  }
+
+  const hosts = [];
+  for (let current = start; current <= end; current += 1) {
+    hosts.push(intToIp(current >>> 0));
+  }
+  return hosts;
+}
+
+function normalizeName(name) {
+  if (!name) return "";
+  const trimmed = String(name).trim();
+  if (!trimmed) return "";
+  const firstPart = trimmed.split(",")[0].trim();
+  const cleaned = firstPart.replace(/^(DNS:|IP Address:)/i, "").trim();
   const withoutDot = cleaned.replace(/\.$/, "");
   return withoutDot.replace(/\.local$/i, "");
 }
