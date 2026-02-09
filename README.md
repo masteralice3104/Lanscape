@@ -94,7 +94,7 @@ ip,segments,name
 
 ルール:
 - `ip` がキー（同一IPは後勝ち）
-- `name` は空欄可（空欄なら `auto_name` で補完）
+- `name` は空欄可（自動で補完しない）
 - 旧ヘッダ `ip,user_space,manual_name` も読み込み可
 - `--update-space` 有効時は、生存IPが毎回追記/更新されます
 - `--space-from-segment` 有効時は `segments` を segments.txt のセグメント名で上書き
@@ -107,7 +107,7 @@ ip,segments,name
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
-- `name`: space.csv の `name`（空欄なら `auto_name` で補完）
+- `name`: space.csv の `name`（手動入力のみ）
 - `auto_name`: DNS lookupService → mDNS → ping -a → rDNS → NetBIOS → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
 - `os_guess`: TTL からのOS推定（ベストエフォート）
