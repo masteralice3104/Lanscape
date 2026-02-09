@@ -20,6 +20,8 @@ const DEFAULT_OPTIONS = {
   segmentsPath: null,
   spacePath: null,
   outputPath: null,
+  watchEnabled: false,
+  watchIntervalMs: 60000,
 };
 
 function parseArgs(argv) {
@@ -60,6 +62,15 @@ function parseArgs(argv) {
         case "--output":
           options.outputPath = takeValue();
           break;
+        case "--watch":
+          options.watchEnabled = true;
+          break;
+        case "--once":
+          options.watchEnabled = false;
+          break;
+        case "--watch-interval":
+          options.watchIntervalMs = Number(takeValue());
+          break;
         case "--config":
           configPath = takeValue();
           break;
@@ -94,6 +105,9 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.dnsConcurrency) || options.dnsConcurrency <= 0) {
     fatal("--dns-concurrency は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.watchIntervalMs) || options.watchIntervalMs <= 0) {
+    fatal("--watch-interval は正の数値で指定してください。");
   }
   if (options.format !== "csv") {
     fatal("--format は csv のみサポートしています。");
@@ -172,6 +186,8 @@ function saveConfig(filePath, options) {
     dnsEnabled: options.dnsEnabled,
     format: options.format,
     outputPath: options.outputPath,
+    watchEnabled: options.watchEnabled,
+    watchIntervalMs: options.watchIntervalMs,
   };
   try {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -196,6 +212,8 @@ function applyConfig(options, config, override) {
   applyValue("dnsEnabled");
   applyValue("format");
   applyValue("outputPath");
+  applyValue("watchEnabled");
+  applyValue("watchIntervalMs");
 
   return options;
 }
@@ -255,6 +273,10 @@ async function interactiveSetup(baseOptions, configPath) {
     const outputPath = saveOutput
       ? await prompt.ask("保存先ファイルパス", "inventory.csv")
       : "";
+    const watchEnabled = await askYesNo(prompt, "定期更新を有効にしますか", true);
+    const watchIntervalMs = watchEnabled
+      ? await askNumber(prompt, "更新間隔(ms)", baseOptions.watchIntervalMs)
+      : baseOptions.watchIntervalMs;
 
     const options = {
       ...baseOptions,
@@ -265,6 +287,8 @@ async function interactiveSetup(baseOptions, configPath) {
       dnsConcurrency,
       dnsEnabled,
       outputPath: outputPath || null,
+      watchEnabled,
+      watchIntervalMs,
     };
 
     const save = await askYesNo(prompt, `設定を保存しますか (${configPath})`, true);
@@ -501,8 +525,11 @@ async function reverseDns(ip) {
   }
 }
 
-async function main() {
-  const options = await resolveOptions(process.argv.slice(2));
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runSurvey(options) {
   const segmentsContent = readTextFile(options.segmentsPath, "segments.txt");
   const segments = parseSegments(segmentsContent);
   const spaceMap = options.spacePath
@@ -595,6 +622,23 @@ async function main() {
 
   if (outputStream) {
     await new Promise((resolve) => outputStream.end(resolve));
+  }
+}
+
+async function main() {
+  const options = await resolveOptions(process.argv.slice(2));
+  if (!options.watchEnabled) {
+    await runSurvey(options);
+    return;
+  }
+
+  while (true) {
+    const startedAt = new Date();
+    process.stderr.write(`--- survey start ${startedAt.toISOString()} ---\n`);
+    await runSurvey(options);
+    const finishedAt = new Date();
+    process.stderr.write(`--- survey done  ${finishedAt.toISOString()} ---\n`);
+    await sleep(options.watchIntervalMs);
   }
 }
 

@@ -10,6 +10,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - 対話式（デフォルト）: `node lanscape.js`
 	- 初回は設定ファイル作成や samples から入力ファイル生成を案内します。
 	- 出力CSVの保存有無も対話で設定できます。
+	- 既定で定期更新（watch）を有効にします。
 - 実行形式（非対話）: `node lanscape.js <segments.txt> [space.csv]`
 - 例: `node lanscape.js samples/segments.txt samples/space.csv`
 
@@ -21,6 +22,9 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
 - `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
+- `--watch` 定期更新を有効化
+- `--once` 単発実行（定期更新を無効化）
+- `--watch-interval <ms>` 更新間隔（既定 60000）
 
 ## 入力ファイル
 ### segments.txt（必須）
