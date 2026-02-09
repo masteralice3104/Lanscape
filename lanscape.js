@@ -1342,11 +1342,16 @@ function pingResolvedName(ip, timeoutMs) {
         resolve(matchEn[1]);
         return;
       }
-      const lines = output.split(/\r?\n/);
-      const targetLine = lines.find((line) => line.includes("[") && line.includes("]")) || "";
-      const matchBracket = targetLine.match(/([^\s\[]+)\s*\[[0-9.]+\]/i);
+      const normalizedOutput = output.replace(/\u3000/g, " ");
+      const lines = normalizedOutput.split(/\r?\n/);
+      const lineForIp =
+        lines.find((line) => line.includes(`[${ip}]`)) ||
+        lines.find((line) => line.includes("[") && line.includes("]")) ||
+        "";
+      const matchBracket = lineForIp.match(new RegExp(`^(.*?)[\s]*\\[${ip.replace(/\./g, "\\.")}\\]`));
       if (matchBracket && matchBracket[1]) {
-        resolve(matchBracket[1]);
+        const token = matchBracket[1].trim().split(/\s+/).pop();
+        resolve(token || "");
         return;
       }
       resolve("");
