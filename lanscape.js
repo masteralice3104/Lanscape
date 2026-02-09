@@ -6,6 +6,7 @@ const readline = require("readline");
 const dns = require("dns").promises;
 const { spawn } = require("child_process");
 const http = require("http");
+const multicastDns = require("multicast-dns");
 
 function fatal(message) {
   process.stderr.write(`${message}\n`);
@@ -17,7 +18,9 @@ const DEFAULT_OPTIONS = {
   pingConcurrency: 80,
   dnsConcurrency: 30,
   dnsEnabled: true,
-  netbiosEnabled: true,
+  mdnsEnabled: true,
+  mdnsTimeout: 2000,
+  netbiosEnabled: process.platform === "win32",
   httpTitleEnabled: true,
   httpTimeout: 2000,
   format: "csv",
@@ -60,6 +63,15 @@ function parseArgs(argv) {
           break;
         case "--no-dns":
           options.dnsEnabled = false;
+          break;
+        case "--mdns":
+          options.mdnsEnabled = true;
+          break;
+        case "--no-mdns":
+          options.mdnsEnabled = false;
+          break;
+        case "--mdns-timeout":
+          options.mdnsTimeout = Number(takeValue());
           break;
         case "--netbios":
           options.netbiosEnabled = true;
@@ -131,6 +143,9 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.dnsConcurrency) || options.dnsConcurrency <= 0) {
     fatal("--dns-concurrency は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.mdnsTimeout) || options.mdnsTimeout <= 0) {
+    fatal("--mdns-timeout は正の数値で指定してください。");
   }
   if (!Number.isFinite(options.httpTimeout) || options.httpTimeout <= 0) {
     fatal("--http-timeout は正の数値で指定してください。");
@@ -213,6 +228,8 @@ function saveConfig(filePath, options) {
     pingConcurrency: options.pingConcurrency,
     dnsConcurrency: options.dnsConcurrency,
     dnsEnabled: options.dnsEnabled,
+    mdnsEnabled: options.mdnsEnabled,
+    mdnsTimeout: options.mdnsTimeout,
     netbiosEnabled: options.netbiosEnabled,
     httpTitleEnabled: options.httpTitleEnabled,
     httpTimeout: options.httpTimeout,
@@ -243,6 +260,8 @@ function applyConfig(options, config, override) {
   applyValue("pingConcurrency");
   applyValue("dnsConcurrency");
   applyValue("dnsEnabled");
+  applyValue("mdnsEnabled");
+  applyValue("mdnsTimeout");
   applyValue("netbiosEnabled");
   applyValue("httpTitleEnabled");
   applyValue("httpTimeout");
@@ -306,6 +325,10 @@ async function interactiveSetup(baseOptions, configPath) {
     const pingConcurrency = await askNumber(prompt, "ping 並列数", baseOptions.pingConcurrency);
     const dnsConcurrency = await askNumber(prompt, "rDNS 並列数", baseOptions.dnsConcurrency);
     const dnsEnabled = await askYesNo(prompt, "rDNS を有効にしますか", baseOptions.dnsEnabled);
+    const mdnsEnabled = await askYesNo(prompt, "mDNS 名を取得しますか", baseOptions.mdnsEnabled);
+    const mdnsTimeout = mdnsEnabled
+      ? await askNumber(prompt, "mDNS タイムアウト(ms)", baseOptions.mdnsTimeout)
+      : baseOptions.mdnsTimeout;
     const netbiosEnabled = await askYesNo(prompt, "NetBIOS 名を取得しますか", baseOptions.netbiosEnabled);
     const httpTitleEnabled = await askYesNo(
       prompt,
@@ -333,6 +356,8 @@ async function interactiveSetup(baseOptions, configPath) {
       pingConcurrency,
       dnsConcurrency,
       dnsEnabled,
+      mdnsEnabled,
+      mdnsTimeout,
       netbiosEnabled,
       httpTitleEnabled,
       httpTimeout,
@@ -596,11 +621,23 @@ function runWithConcurrency(items, limit, worker) {
   });
 }
 
+function getPingCommand(timeoutMs, ip) {
+  if (process.platform === "win32") {
+    return { cmd: "ping", args: ["-n", "1", "-w", String(timeoutMs), ip] };
+  }
+
+  const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  if (process.platform === "darwin") {
+    return { cmd: "ping", args: ["-c", "1", "-W", String(timeoutMs), ip] };
+  }
+
+  return { cmd: "ping", args: ["-c", "1", "-W", String(timeoutSeconds), ip] };
+}
+
 function pingAlive(ip, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn("ping", ["-n", "1", "-w", String(timeoutMs), ip], {
-      stdio: "ignore",
-    });
+    const { cmd, args } = getPingCommand(timeoutMs, ip);
+    const child = spawn(cmd, args, { stdio: "ignore" });
 
     child.on("error", (error) => reject(error));
     child.on("close", (code) => resolve(code === 0));
@@ -617,6 +654,37 @@ async function reverseDns(ip) {
   }
 }
 
+function reverseArpa(ip) {
+  return `${ip.split(".").reverse().join(".")}.in-addr.arpa`;
+}
+
+function mdnsReverse(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    const mdns = multicastDns();
+    const name = reverseArpa(ip);
+    const timer = setTimeout(() => {
+      mdns.destroy();
+      resolve("");
+    }, timeoutMs);
+
+    mdns.on("response", (response) => {
+      const answers = response.answers || [];
+      for (const answer of answers) {
+        if (answer.type === "PTR" && answer.name === name && answer.data) {
+          clearTimeout(timer);
+          mdns.destroy();
+          resolve(String(answer.data).replace(/\.$/, ""));
+          return;
+        }
+      }
+    });
+
+    mdns.query({
+      questions: [{ name, type: "PTR" }],
+    });
+  });
+}
+
 function parseNetbiosName(output) {
   const lines = output.split(/\r?\n/);
   for (const line of lines) {
@@ -630,6 +698,10 @@ function parseNetbiosName(output) {
 
 function netbiosName(ip, timeoutMs) {
   return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve("");
+      return;
+    }
     const child = spawn("nbtstat", ["-A", ip], {
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -761,6 +833,15 @@ async function runSurvey(options) {
         if (rdns) {
           record.auto_name = rdns;
           record.source = "rdns";
+          return;
+        }
+      }
+
+      if (options.mdnsEnabled) {
+        const mdnsName = await mdnsReverse(record.ip, options.mdnsTimeout);
+        if (mdnsName) {
+          record.auto_name = mdnsName;
+          record.source = "mdns";
           return;
         }
       }

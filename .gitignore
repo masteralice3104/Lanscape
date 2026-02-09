@@ -1,0 +1,5 @@
+node_modules/
+*.log
+lanscape.config.json
+segments.txt
+space.csv

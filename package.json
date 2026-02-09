@@ -1,0 +1,23 @@
+{
+  "name": "lanscape",
+  "version": "1.0.0",
+  "description": "LANを空間として把握するために、既知のIPv4セグメントを能動探索し、CSVインベントリを標準出力に出すツールです。",
+  "main": "lanscape.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masteralice3104/Lanscape.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/masteralice3104/Lanscape/issues"
+  },
+  "homepage": "https://github.com/masteralice3104/Lanscape#readme",
+  "dependencies": {
+    "multicast-dns": "^7.2.5"
+  }
+}

@@ -10,7 +10,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 - 出力は CSV（inventory）を標準出力に出す
 
 ## 1. 実装方針（非交渉の制約）
-- **Windows 前提**（実行環境：Windows 10/11 を想定）
+- OS依存を避ける（Windows / macOS / Linux）
 - 言語：Node.js（.js）
 - TypeScriptは使わない（.jsで完結）
 - v0.1 は “依存ゼロ” を推奨（npm依存は無しで開始）。ただし、実装都合で最小限を入れるなら理由をコメントで明記。
@@ -75,8 +75,11 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 - CLIオプションで変更できるようにする（後述）
 
 ## 4. 名称取得（auto_name）
-- v0.1 は **逆引きDNS（rDNS）だけ** を行う
-- Node.js 標準 `dns.promises.reverse(ip)` を使用
+- v0.1 は `manual_name` → rDNS → mDNS → NetBIOS → HTTPタイトル の順で取得
+- rDNS: Node.js 標準 `dns.promises.reverse(ip)`
+- mDNS: `multicast-dns` で PTR 逆引きを試行
+- NetBIOS: Windows のみ `nbtstat -A`
+- HTTPタイトル: `http://<ip>/` の `<title>`
 - 取得できない場合は空文字
 - 優先順位：
   1) `manual_name`（space.csvにある場合）
@@ -84,7 +87,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
   3) 空
 
 `source` 列は上記に合わせて：
-- `manual` / `rdns` / `none`
+- `manual` / `rdns` / `mdns` / `netbios` / `http` / `none`
 
 ## 5. 出力仕様（CSV）
 
@@ -133,7 +136,6 @@ v0.1 は「単一コマンド」で十分。以下の形で実装する：
 - MACアドレス取得（ARP等）… **やらない**
 - SNMP / SSH / ルータ設定解析 … やらない
 - トポロジー推定（リンク関係の自動推論）… やらない
-- mDNS/NBNS/HTTPバナー等の名前取得 … v0.2以降
 - 長期DB（first_seen/last_seen）… v0.2以降
 
 ## 9. 期待される挙動（サンプル）
