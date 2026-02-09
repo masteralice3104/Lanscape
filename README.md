@@ -11,6 +11,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 	- 初回は設定ファイル作成や samples から入力ファイル生成を案内します。
 	- 出力CSVの保存有無も対話で設定できます。
 	- 既定で定期更新（watch）を有効にします。
+	- 既定で space.csv を自動更新します（alive IP を追加）。
 - 実行形式（非対話）: `node lanscape.js <segments.txt> [space.csv]`
 - 例: `node lanscape.js samples/segments.txt samples/space.csv`
 
@@ -22,6 +23,8 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
 - `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
+- `--update-space` space.csv を自動更新（既定）
+- `--no-update-space` space.csv の自動更新を無効化
 - `--watch` 定期更新を有効化
 - `--once` 単発実行（定期更新を無効化）
 - `--watch-interval <ms>` 更新間隔（既定 60000）
@@ -36,6 +39,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - 例:
 	- `192.168.100.204,portal,reverse-proxy`
 	- `192.168.100.1,edge,rtx210`
+- `--update-space` 有効時は、生存IPが毎回 space.csv に追記/更新されます。
 
 ## 出力CSV
 標準出力に以下の列を固定で出力します。

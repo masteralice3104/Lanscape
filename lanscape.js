@@ -22,6 +22,7 @@ const DEFAULT_OPTIONS = {
   outputPath: null,
   watchEnabled: false,
   watchIntervalMs: 60000,
+  updateSpaceEnabled: true,
 };
 
 function parseArgs(argv) {
@@ -61,6 +62,12 @@ function parseArgs(argv) {
           break;
         case "--output":
           options.outputPath = takeValue();
+          break;
+        case "--update-space":
+          options.updateSpaceEnabled = true;
+          break;
+        case "--no-update-space":
+          options.updateSpaceEnabled = false;
           break;
         case "--watch":
           options.watchEnabled = true;
@@ -188,6 +195,7 @@ function saveConfig(filePath, options) {
     outputPath: options.outputPath,
     watchEnabled: options.watchEnabled,
     watchIntervalMs: options.watchIntervalMs,
+    updateSpaceEnabled: options.updateSpaceEnabled,
   };
   try {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -214,6 +222,7 @@ function applyConfig(options, config, override) {
   applyValue("outputPath");
   applyValue("watchEnabled");
   applyValue("watchIntervalMs");
+  applyValue("updateSpaceEnabled");
 
   return options;
 }
@@ -277,6 +286,7 @@ async function interactiveSetup(baseOptions, configPath) {
     const watchIntervalMs = watchEnabled
       ? await askNumber(prompt, "更新間隔(ms)", baseOptions.watchIntervalMs)
       : baseOptions.watchIntervalMs;
+    const updateSpaceEnabled = await askYesNo(prompt, "space.csv を自動更新しますか", true);
 
     const options = {
       ...baseOptions,
@@ -289,6 +299,7 @@ async function interactiveSetup(baseOptions, configPath) {
       outputPath: outputPath || null,
       watchEnabled,
       watchIntervalMs,
+      updateSpaceEnabled,
     };
 
     const save = await askYesNo(prompt, `設定を保存しますか (${configPath})`, true);
@@ -308,6 +319,9 @@ async function resolveOptions(argv) {
 
   if (parsed.positionalCount === 0) {
     const interactive = await interactiveSetup(parsed.options, configPath);
+    if (interactive.updateSpaceEnabled && !interactive.spacePath) {
+      interactive.spacePath = "space.csv";
+    }
     return validateOptions(interactive);
   }
 
@@ -316,6 +330,9 @@ async function resolveOptions(argv) {
     applyConfig(parsed.options, config, false);
   }
 
+  if (parsed.options.updateSpaceEnabled && !parsed.options.spacePath) {
+    parsed.options.spacePath = "space.csv";
+  }
   return validateOptions(parsed.options);
 }
 
@@ -387,6 +404,41 @@ function parseSpaceCsv(content) {
   }
 
   return map;
+}
+
+function loadSpaceMap(spacePath, allowMissing) {
+  if (!spacePath) {
+    return new Map();
+  }
+  if (!fileExists(spacePath)) {
+    if (allowMissing) return new Map();
+    fatal(`space.csv を読み込めません: ${spacePath}`);
+  }
+  return parseSpaceCsv(readTextFile(spacePath, "space.csv"));
+}
+
+function updateSpaceCsv(spacePath, spaceMap, aliveIps) {
+  if (!spacePath) return;
+
+  const merged = new Map(spaceMap);
+  for (const ip of aliveIps) {
+    if (!merged.has(ip)) {
+      merged.set(ip, { user_space: "", manual_name: "" });
+    }
+  }
+
+  const rows = ["ip,user_space,manual_name"];
+  const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
+  for (const ip of sortedIps) {
+    const entry = merged.get(ip) || { user_space: "", manual_name: "" };
+    rows.push([ip, entry.user_space || "", entry.manual_name || ""].join(","));
+  }
+
+  try {
+    fs.writeFileSync(spacePath, rows.join("\n") + "\n", "utf8");
+  } catch (error) {
+    fatal(`space.csv を書き込めません: ${spacePath}`);
+  }
 }
 
 function parseCidr(cidr, context) {
@@ -532,9 +584,7 @@ function sleep(ms) {
 async function runSurvey(options) {
   const segmentsContent = readTextFile(options.segmentsPath, "segments.txt");
   const segments = parseSegments(segmentsContent);
-  const spaceMap = options.spacePath
-    ? parseSpaceCsv(readTextFile(options.spacePath, "space.csv"))
-    : new Map();
+  const spaceMap = loadSpaceMap(options.spacePath, options.updateSpaceEnabled);
   const outputStream = options.outputPath
     ? fs.createWriteStream(options.outputPath, { encoding: "utf8" })
     : null;
@@ -547,6 +597,8 @@ async function runSurvey(options) {
   };
 
   writeLine("segment,ip,user_space,auto_name,source");
+
+  const allAliveIps = [];
 
   for (const segment of segments) {
     const hosts = enumerateHosts(segment.ipInt, segment.prefix);
@@ -565,6 +617,7 @@ async function runSurvey(options) {
     }
 
     aliveIps.sort((a, b) => ipToInt(a) - ipToInt(b));
+    allAliveIps.push(...aliveIps);
 
     const records = aliveIps.map((ip) => {
       const entry = spaceMap.get(ip) || { user_space: "", manual_name: "" };
@@ -618,6 +671,10 @@ async function runSurvey(options) {
         .join(",");
       writeLine(row);
     }
+  }
+
+  if (options.updateSpaceEnabled) {
+    updateSpaceCsv(options.spacePath, spaceMap, allAliveIps);
   }
 
   if (outputStream) {
