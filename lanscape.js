@@ -30,6 +30,7 @@ const DEFAULT_OPTIONS = {
   watchEnabled: false,
   watchIntervalMs: 60000,
   updateSpaceEnabled: true,
+  spaceFromSegment: true,
 };
 
 function parseArgs(argv) {
@@ -99,6 +100,12 @@ function parseArgs(argv) {
           break;
         case "--no-update-space":
           options.updateSpaceEnabled = false;
+          break;
+        case "--space-from-segment":
+          options.spaceFromSegment = true;
+          break;
+        case "--no-space-from-segment":
+          options.spaceFromSegment = false;
           break;
         case "--watch":
           options.watchEnabled = true;
@@ -238,6 +245,7 @@ function saveConfig(filePath, options) {
     watchEnabled: options.watchEnabled,
     watchIntervalMs: options.watchIntervalMs,
     updateSpaceEnabled: options.updateSpaceEnabled,
+    spaceFromSegment: options.spaceFromSegment,
   };
   try {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -270,6 +278,7 @@ function applyConfig(options, config, override) {
   applyValue("watchEnabled");
   applyValue("watchIntervalMs");
   applyValue("updateSpaceEnabled");
+  applyValue("spaceFromSegment");
 
   return options;
 }
@@ -347,6 +356,9 @@ async function interactiveSetup(baseOptions, configPath) {
       ? await askNumber(prompt, "更新間隔(ms)", baseOptions.watchIntervalMs)
       : baseOptions.watchIntervalMs;
     const updateSpaceEnabled = await askYesNo(prompt, "space.csv を自動更新しますか", true);
+    const spaceFromSegment = updateSpaceEnabled
+      ? await askYesNo(prompt, "user_space をセグメント名で上書きしますか", baseOptions.spaceFromSegment)
+      : baseOptions.spaceFromSegment;
 
     const options = {
       ...baseOptions,
@@ -365,6 +377,7 @@ async function interactiveSetup(baseOptions, configPath) {
       watchEnabled,
       watchIntervalMs,
       updateSpaceEnabled,
+      spaceFromSegment,
     };
 
     const save = await askYesNo(prompt, `設定を保存しますか (${configPath})`, true);
@@ -483,21 +496,22 @@ function loadSpaceMap(spacePath, allowMissing) {
   return parseSpaceCsv(readTextFile(spacePath, "space.csv"));
 }
 
-function updateSpaceCsv(spacePath, spaceMap, recordMap) {
+function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
   if (!spacePath) return;
 
   const merged = new Map(spaceMap);
   for (const [ip, record] of recordMap.entries()) {
     const existing = merged.get(ip);
+    const nextUserSpace = spaceFromSegment && record.segment ? record.segment : existing?.user_space || "";
     if (existing) {
       merged.set(ip, {
-        user_space: existing.user_space || "",
+        user_space: nextUserSpace,
         manual_name: existing.manual_name || "",
         auto_name: record.auto_name || existing.auto_name || "",
       });
     } else {
       merged.set(ip, {
-        user_space: "",
+        user_space: nextUserSpace,
         manual_name: "",
         auto_name: record.auto_name || "",
       });
@@ -903,7 +917,7 @@ async function runSurvey(options) {
   }
 
   if (options.updateSpaceEnabled) {
-    updateSpaceCsv(options.spacePath, spaceMap, recordMap);
+    updateSpaceCsv(options.spacePath, spaceMap, recordMap, options.spaceFromSegment);
   }
 
   if (outputStream) {
