@@ -1334,8 +1334,14 @@ function pingResolvedName(ip, timeoutMs) {
     });
     child.on("close", () => {
       clearTimeout(timer);
-      const match = output.match(/Pinging\s+([^\s\[]+)\s*\[/i);
-      resolve(match ? match[1] : "");
+      const matchEn = output.match(/Pinging\s+([^\s\[]+)\s*\[/i);
+      if (matchEn && matchEn[1]) {
+        resolve(matchEn[1]);
+        return;
+      }
+      const firstLine = output.split(/\r?\n/)[0] || "";
+      const matchJp = firstLine.match(/^([^\s\[]+)\s*\[[0-9.]+\]/i);
+      resolve(matchJp ? matchJp[1] : "");
     });
   });
 }
