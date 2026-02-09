@@ -31,6 +31,8 @@ const DEFAULT_OPTIONS = {
   watchIntervalMs: 60000,
   updateSpaceEnabled: true,
   spaceFromSegment: true,
+  macEnabled: true,
+  macTimeout: 2000,
 };
 
 function parseArgs(argv) {
@@ -88,6 +90,15 @@ function parseArgs(argv) {
           break;
         case "--http-timeout":
           options.httpTimeout = Number(takeValue());
+          break;
+        case "--mac":
+          options.macEnabled = true;
+          break;
+        case "--no-mac":
+          options.macEnabled = false;
+          break;
+        case "--mac-timeout":
+          options.macTimeout = Number(takeValue());
           break;
         case "--format":
           options.format = takeValue();
@@ -156,6 +167,9 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.httpTimeout) || options.httpTimeout <= 0) {
     fatal("--http-timeout は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.macTimeout) || options.macTimeout <= 0) {
+    fatal("--mac-timeout は正の数値で指定してください。");
   }
   if (!Number.isFinite(options.watchIntervalMs) || options.watchIntervalMs <= 0) {
     fatal("--watch-interval は正の数値で指定してください。");
@@ -240,6 +254,8 @@ function saveConfig(filePath, options) {
     netbiosEnabled: options.netbiosEnabled,
     httpTitleEnabled: options.httpTitleEnabled,
     httpTimeout: options.httpTimeout,
+    macEnabled: options.macEnabled,
+    macTimeout: options.macTimeout,
     format: options.format,
     outputPath: options.outputPath,
     watchEnabled: options.watchEnabled,
@@ -273,6 +289,8 @@ function applyConfig(options, config, override) {
   applyValue("netbiosEnabled");
   applyValue("httpTitleEnabled");
   applyValue("httpTimeout");
+  applyValue("macEnabled");
+  applyValue("macTimeout");
   applyValue("format");
   applyValue("outputPath");
   applyValue("watchEnabled");
@@ -287,7 +305,7 @@ async function ensureSampleFiles(prompt, targetDir) {
   const sampleDir = path.join(__dirname, "samples");
   const sampleFiles = [
     { name: "segments.txt", fallback: "LAN 192.168.100.0/24\n" },
-    { name: "space.csv", fallback: "ip,user_space,manual_name\n" },
+    { name: "space.csv", fallback: "ip,segments,name,auto_name,mac\n" },
   ];
 
   for (const file of sampleFiles) {
@@ -347,6 +365,10 @@ async function interactiveSetup(baseOptions, configPath) {
     const httpTimeout = httpTitleEnabled
       ? await askNumber(prompt, "HTTP タイムアウト(ms)", baseOptions.httpTimeout)
       : baseOptions.httpTimeout;
+    const macEnabled = await askYesNo(prompt, "MAC アドレスを取得しますか", baseOptions.macEnabled);
+    const macTimeout = macEnabled
+      ? await askNumber(prompt, "MAC 取得タイムアウト(ms)", baseOptions.macTimeout)
+      : baseOptions.macTimeout;
     const saveOutput = await askYesNo(prompt, "出力CSVをファイルに保存しますか", false);
     const outputPath = saveOutput
       ? await prompt.ask("保存先ファイルパス", "inventory.csv")
@@ -373,6 +395,8 @@ async function interactiveSetup(baseOptions, configPath) {
       netbiosEnabled,
       httpTitleEnabled,
       httpTimeout,
+      macEnabled,
+      macTimeout,
       outputPath: outputPath || null,
       watchEnabled,
       watchIntervalMs,
@@ -459,18 +483,20 @@ function parseSpaceCsv(content) {
 
   const header = lines[0].trim();
   const legacyHeader = header === "ip,user_space,manual_name" || header === "ip,user_space,manual_name,auto_name";
-  const newHeader = header === "ip,segments,manual_name" || header === "ip,segments,manual_name,auto_name";
-  if (!legacyHeader && !newHeader) {
-    fatal("space.csv のヘッダは ip,segments,manual_name[,auto_name]（旧: ip,user_space,manual_name）である必要があります。");
+  const segmentsLegacy = header === "ip,segments,manual_name" || header === "ip,segments,manual_name,auto_name";
+  const newHeader = header === "ip,segments,name" || header === "ip,segments,name,auto_name";
+  const extendedHeader = header === "ip,segments,name,auto_name,mac";
+  if (!legacyHeader && !segmentsLegacy && !newHeader && !extendedHeader) {
+    fatal("space.csv のヘッダは ip,segments,name[,auto_name][,mac]（旧: ip,user_space,manual_name）である必要があります。");
   }
 
   for (let i = 1; i < lines.length; i += 1) {
     const line = lines[i];
     const parts = line.split(",");
-    if (parts.length !== 3 && parts.length !== 4) {
+    if (parts.length < 3 || parts.length > 5) {
       fatal(`space.csv の ${i + 1} 行目が不正です。`);
     }
-    const [ip, segmentsValue, manualName, autoName] = parts.map((value) => value.trim());
+    const [ip, segmentsValue, nameValue, autoName, macValue] = parts.map((value) => value.trim());
     if (!ip) {
       fatal(`space.csv の ${i + 1} 行目の ip が空です。`);
     }
@@ -479,8 +505,9 @@ function parseSpaceCsv(content) {
     }
     map.set(ip, {
       segments: segmentsValue || "",
-      manual_name: manualName || "",
+      name: nameValue || "",
       auto_name: autoName || "",
+      mac: macValue || "",
     });
   }
 
@@ -508,23 +535,29 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
     if (existing) {
       merged.set(ip, {
         segments: nextSegments,
-        manual_name: existing.manual_name || "",
+        name: existing.name || record.name || record.auto_name || "",
         auto_name: record.auto_name || existing.auto_name || "",
+        mac: record.mac || existing.mac || "",
       });
     } else {
       merged.set(ip, {
         segments: nextSegments,
-        manual_name: "",
+        name: record.name || record.auto_name || "",
         auto_name: record.auto_name || "",
+        mac: record.mac || "",
       });
     }
   }
 
-  const rows = ["ip,segments,manual_name,auto_name"];
+  const rows = ["ip,segments,name,auto_name,mac"];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
-    const entry = merged.get(ip) || { segments: "", manual_name: "", auto_name: "" };
-    rows.push([ip, entry.segments || "", entry.manual_name || "", entry.auto_name || ""].join(","));
+    const entry = merged.get(ip) || { segments: "", name: "", auto_name: "", mac: "" };
+    rows.push(
+      [ip, entry.segments || "", entry.name || "", entry.auto_name || "", entry.mac || ""]
+        .map(csvEscape)
+        .join(","),
+    );
   }
 
   try {
@@ -803,6 +836,62 @@ function httpTitle(ip, timeoutMs) {
   });
 }
 
+function normalizeMac(mac) {
+  if (!mac) return "";
+  const cleaned = mac.trim().replace(/-/g, ":").toLowerCase();
+  return cleaned;
+}
+
+function parseMacTable(output) {
+  const map = new Map();
+  const lines = output.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/(\d+\.\d+\.\d+\.\d+).+?([0-9a-fA-F:-]{11,})/);
+    if (match) {
+      const ip = match[1];
+      const mac = normalizeMac(match[2]);
+      if (isValidIp(ip) && mac) {
+        map.set(ip, mac);
+      }
+    }
+  }
+  return map;
+}
+
+function getArpCommand() {
+  if (process.platform === "win32") {
+    return { cmd: "arp", args: ["-a"] };
+  }
+  if (process.platform === "darwin") {
+    return { cmd: "arp", args: ["-a"] };
+  }
+  return { cmd: "ip", args: ["neigh"] };
+}
+
+function loadMacTable(timeoutMs) {
+  return new Promise((resolve) => {
+    const { cmd, args } = getArpCommand();
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"] });
+    let output = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve(new Map());
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString("utf8");
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve(new Map());
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      resolve(parseMacTable(output));
+    });
+  });
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -822,9 +911,11 @@ async function runSurvey(options) {
     }
   };
 
-  writeLine("segment,ip,segments,auto_name,source");
+  writeLine("segment,ip,segments,name,auto_name,mac,source");
 
   const recordMap = new Map();
+
+  const macTable = options.macEnabled ? await loadMacTable(options.macTimeout) : new Map();
 
   for (const segment of segments) {
     const hosts = enumerateHosts(segment.ipInt, segment.prefix);
@@ -845,24 +936,19 @@ async function runSurvey(options) {
     aliveIps.sort((a, b) => ipToInt(a) - ipToInt(b));
 
     const records = aliveIps.map((ip) => {
-      const entry = spaceMap.get(ip) || { segments: "", manual_name: "" };
+      const entry = spaceMap.get(ip) || { segments: "", name: "", auto_name: "", mac: "" };
       return {
         segment: segment.name,
         ip,
         segments: entry.segments || "",
-        manual_name: entry.manual_name || "",
+        name: entry.name || "",
         auto_name: "",
+        mac: entry.mac || macTable.get(ip) || "",
         source: "none",
       };
     });
 
     await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
-      if (record.manual_name) {
-        record.auto_name = record.manual_name;
-        record.source = "manual";
-        return;
-      }
-
       if (options.dnsEnabled) {
         const rdns = normalizeName(await reverseDns(record.ip));
         if (rdns) {
@@ -904,12 +990,23 @@ async function runSurvey(options) {
     });
 
     for (const record of records) {
+      if (!record.name && record.auto_name) {
+        record.name = record.auto_name;
+      }
+      if (record.name && record.source === "none") {
+        record.source = "manual";
+      }
+    }
+
+    for (const record of records) {
       recordMap.set(record.ip, record);
       const row = [
         record.segment,
         record.ip,
         record.segments,
+        record.name,
         record.auto_name,
+        record.mac,
         record.source,
       ]
         .map(csvEscape)

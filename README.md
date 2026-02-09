@@ -29,6 +29,9 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--http-title` HTTPタイトル取得を有効化（既定ON）
 - `--no-http-title` HTTPタイトル取得を無効化
 - `--http-timeout <ms>` HTTP/NetBIOS タイムアウト（既定 2000）
+- `--mac` MACアドレス取得を有効化（既定ON）
+- `--no-mac` MACアドレス取得を無効化
+- `--mac-timeout <ms>` MAC取得タイムアウト（既定 2000）
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
 - `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
@@ -46,7 +49,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - 例: `LAN 192.168.100.0/24`
 
 ### space.csv（任意）
-- ヘッダ必須: `ip,segments,manual_name,auto_name`（旧形式の3列も読み込み可）
+- ヘッダ必須: `ip,segments,name,auto_name,mac`（旧形式の3列も読み込み可）
 - 例:
 	- `192.168.100.204,portal,reverse-proxy`
 	- `192.168.100.1,edge,rtx210`
@@ -56,12 +59,14 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
 
-`segment,ip,segments,auto_name,source`
+`segment,ip,segments,name,auto_name,mac,source`
 
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
-- `auto_name`: `manual_name` → rDNS → mDNS → NetBIOS → HTTPタイトル → 空 の優先順
+- `name`: space.csv の `name`（空欄なら `auto_name` で補完）
+- `auto_name`: rDNS → mDNS → NetBIOS → HTTPタイトル → 空 の優先順
+- `mac`: 取得できた場合のMACアドレス（ベストエフォート）
 - `source`: `manual` / `rdns` / `mdns` / `netbios` / `http` / `none`
 
 ## 制約（v0.1）
@@ -71,4 +76,5 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - NetBIOSは Windows のみ（`nbtstat -A`）
 - HTTPタイトルは `http://<ip>/` の `<title>`
 - `auto_name` は末尾の `.local` を自動で除去
+- MAC取得はARP/近傍テーブル依存のためVPN越しでは取得できない場合があります
 - MAC/ARP、SNMP/SSH、トポロジ推定は非対応

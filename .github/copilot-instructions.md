@@ -34,9 +34,9 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
   - 不正行は **エラー終了**（行番号付きで出す）
 
 ### 2.2 space.csv（任意）
-- ユーザ定義の「空間（user_space）」と「手動名（manual_name）」付与用
-- ヘッダ必須：`ip,user_space,manual_name`
-  - `manual_name` は空でもよい
+- ユーザ定義の「空間（segments）」と「手動名（name）」付与用
+- ヘッダ必須：`ip,segments,name,auto_name,mac`（旧: `ip,user_space,manual_name`）
+  - `name` は空でもよい（空欄なら `auto_name` で補完）
 - 例：
   - `192.168.100.204,portal,reverse-proxy`
   - `192.168.100.1,edge,rtx210`
@@ -98,13 +98,15 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 ### 5.2 CSV列（固定）
 ヘッダ行を必ず出力する：
 
-`segment,ip,user_space,auto_name,source`
+`segment,ip,segments,name,auto_name,mac,source`
 
 - `segment`：segments.txt のセグメント名
 - `ip`：alive と判定したIP
-- `user_space`：space.csvから（なければ空）
-- `auto_name`：manual_name or rdns or 空
-- `source`：manual / rdns / none
+- `segments`：space.csvから（なければ空）
+- `name`：space.csvの `name`（空欄なら `auto_name` で補完）
+- `auto_name`：rdns → mdns → netbios → http → 空
+- `mac`：ARP/近傍テーブルからのベストエフォート取得
+- `source`：manual / rdns / mdns / netbios / http / none
 
 ### 5.3 CSVエスケープ
 - 値にカンマ/改行/ダブルクォートが入る可能性があるため、最低限のエスケープを実装する：
