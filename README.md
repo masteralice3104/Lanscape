@@ -32,6 +32,17 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--mac` MACアドレス取得を有効化（既定ON）
 - `--no-mac` MACアドレス取得を無効化
 - `--mac-timeout <ms>` MAC取得タイムアウト（既定 2000）
+- `--os-guess` OS推定を有効化（既定ON）
+- `--no-os-guess` OS推定を無効化
+- `--ssh-banner` SSHバナー取得を有効化（既定ON）
+- `--no-ssh-banner` SSHバナー取得を無効化
+- `--ssh-timeout <ms>` SSHタイムアウト（既定 2000）
+- `--smb-banner` SMBバナー取得を有効化（既定ON）
+- `--no-smb-banner` SMBバナー取得を無効化
+- `--smb-timeout <ms>` SMBタイムアウト（既定 2000）
+- `--cert-cn` 証明書CN取得を有効化（既定ON）
+- `--no-cert-cn` 証明書CN取得を無効化
+- `--cert-timeout <ms>` 証明書タイムアウト（既定 2000）
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
 - `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
@@ -49,7 +60,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - 例: `LAN 192.168.100.0/24`
 
 ### space.csv（任意）
-- ヘッダ必須: `ip,segments,name,auto_name,mac`（旧形式の3列も読み込み可）
+- ヘッダ必須: `ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn`（旧形式の3列も読み込み可）
 - 例:
 	- `192.168.100.204,portal,reverse-proxy`
 	- `192.168.100.1,edge,rtx210`
@@ -59,7 +70,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
 
-`segment,ip,segments,name,auto_name,mac,source`
+`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,source`
 
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
@@ -67,6 +78,10 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `name`: space.csv の `name`（空欄なら `auto_name` で補完）
 - `auto_name`: rDNS → mDNS → NetBIOS → HTTPタイトル → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
+- `os_guess`: TTL からのOS推定（ベストエフォート）
+- `ssh_banner`: SSHのバナー（22/tcp）
+- `smb_banner`: SMBの応答（445/tcp, ベストエフォート）
+- `cert_cn`: TLS証明書のCN（443/tcp）
 - `source`: `manual` / `rdns` / `mdns` / `netbios` / `http` / `none`
 
 ## 制約（v0.1）
@@ -78,4 +93,6 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `auto_name` は末尾の `.local` を自動で除去
 - HTTPがリダイレクトする場合は追従し、タイトルが取れない場合は `Server` を補完
 - MAC取得はARP/近傍テーブル依存のためVPN越しでは取得できない場合があります
+- OS推定はTTL由来のため正確性は保証できません
+- SMBバナーはポート疎通確認レベルのベストエフォートです
 - MAC/ARP、SNMP/SSH、トポロジ推定は非対応

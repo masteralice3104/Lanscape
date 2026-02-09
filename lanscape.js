@@ -6,6 +6,8 @@ const readline = require("readline");
 const dns = require("dns").promises;
 const { spawn } = require("child_process");
 const http = require("http");
+const net = require("net");
+const tls = require("tls");
 const multicastDns = require("multicast-dns");
 
 function fatal(message) {
@@ -33,6 +35,13 @@ const DEFAULT_OPTIONS = {
   spaceFromSegment: true,
   macEnabled: true,
   macTimeout: 2000,
+  osGuessEnabled: true,
+  sshBannerEnabled: true,
+  sshTimeout: 2000,
+  smbBannerEnabled: true,
+  smbTimeout: 2000,
+  certCnEnabled: true,
+  certTimeout: 2000,
 };
 
 function parseArgs(argv) {
@@ -99,6 +108,39 @@ function parseArgs(argv) {
           break;
         case "--mac-timeout":
           options.macTimeout = Number(takeValue());
+          break;
+        case "--os-guess":
+          options.osGuessEnabled = true;
+          break;
+        case "--no-os-guess":
+          options.osGuessEnabled = false;
+          break;
+        case "--ssh-banner":
+          options.sshBannerEnabled = true;
+          break;
+        case "--no-ssh-banner":
+          options.sshBannerEnabled = false;
+          break;
+        case "--ssh-timeout":
+          options.sshTimeout = Number(takeValue());
+          break;
+        case "--smb-banner":
+          options.smbBannerEnabled = true;
+          break;
+        case "--no-smb-banner":
+          options.smbBannerEnabled = false;
+          break;
+        case "--smb-timeout":
+          options.smbTimeout = Number(takeValue());
+          break;
+        case "--cert-cn":
+          options.certCnEnabled = true;
+          break;
+        case "--no-cert-cn":
+          options.certCnEnabled = false;
+          break;
+        case "--cert-timeout":
+          options.certTimeout = Number(takeValue());
           break;
         case "--format":
           options.format = takeValue();
@@ -170,6 +212,15 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.macTimeout) || options.macTimeout <= 0) {
     fatal("--mac-timeout は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.sshTimeout) || options.sshTimeout <= 0) {
+    fatal("--ssh-timeout は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.smbTimeout) || options.smbTimeout <= 0) {
+    fatal("--smb-timeout は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.certTimeout) || options.certTimeout <= 0) {
+    fatal("--cert-timeout は正の数値で指定してください。");
   }
   if (!Number.isFinite(options.watchIntervalMs) || options.watchIntervalMs <= 0) {
     fatal("--watch-interval は正の数値で指定してください。");
@@ -256,6 +307,13 @@ function saveConfig(filePath, options) {
     httpTimeout: options.httpTimeout,
     macEnabled: options.macEnabled,
     macTimeout: options.macTimeout,
+    osGuessEnabled: options.osGuessEnabled,
+    sshBannerEnabled: options.sshBannerEnabled,
+    sshTimeout: options.sshTimeout,
+    smbBannerEnabled: options.smbBannerEnabled,
+    smbTimeout: options.smbTimeout,
+    certCnEnabled: options.certCnEnabled,
+    certTimeout: options.certTimeout,
     format: options.format,
     outputPath: options.outputPath,
     watchEnabled: options.watchEnabled,
@@ -291,6 +349,13 @@ function applyConfig(options, config, override) {
   applyValue("httpTimeout");
   applyValue("macEnabled");
   applyValue("macTimeout");
+  applyValue("osGuessEnabled");
+  applyValue("sshBannerEnabled");
+  applyValue("sshTimeout");
+  applyValue("smbBannerEnabled");
+  applyValue("smbTimeout");
+  applyValue("certCnEnabled");
+  applyValue("certTimeout");
   applyValue("format");
   applyValue("outputPath");
   applyValue("watchEnabled");
@@ -369,6 +434,19 @@ async function interactiveSetup(baseOptions, configPath) {
     const macTimeout = macEnabled
       ? await askNumber(prompt, "MAC 取得タイムアウト(ms)", baseOptions.macTimeout)
       : baseOptions.macTimeout;
+    const osGuessEnabled = await askYesNo(prompt, "OS推定を有効にしますか", baseOptions.osGuessEnabled);
+    const sshBannerEnabled = await askYesNo(prompt, "SSHバナー取得を有効にしますか", baseOptions.sshBannerEnabled);
+    const sshTimeout = sshBannerEnabled
+      ? await askNumber(prompt, "SSH タイムアウト(ms)", baseOptions.sshTimeout)
+      : baseOptions.sshTimeout;
+    const smbBannerEnabled = await askYesNo(prompt, "SMBバナー取得を有効にしますか", baseOptions.smbBannerEnabled);
+    const smbTimeout = smbBannerEnabled
+      ? await askNumber(prompt, "SMB タイムアウト(ms)", baseOptions.smbTimeout)
+      : baseOptions.smbTimeout;
+    const certCnEnabled = await askYesNo(prompt, "証明書CN取得を有効にしますか", baseOptions.certCnEnabled);
+    const certTimeout = certCnEnabled
+      ? await askNumber(prompt, "証明書取得タイムアウト(ms)", baseOptions.certTimeout)
+      : baseOptions.certTimeout;
     const saveOutput = await askYesNo(prompt, "出力CSVをファイルに保存しますか", false);
     const outputPath = saveOutput
       ? await prompt.ask("保存先ファイルパス", "inventory.csv")
@@ -397,6 +475,13 @@ async function interactiveSetup(baseOptions, configPath) {
       httpTimeout,
       macEnabled,
       macTimeout,
+      osGuessEnabled,
+      sshBannerEnabled,
+      sshTimeout,
+      smbBannerEnabled,
+      smbTimeout,
+      certCnEnabled,
+      certTimeout,
       outputPath: outputPath || null,
       watchEnabled,
       watchIntervalMs,
@@ -482,21 +567,41 @@ function parseSpaceCsv(content) {
   }
 
   const header = lines[0].trim();
-  const legacyHeader = header === "ip,user_space,manual_name" || header === "ip,user_space,manual_name,auto_name";
-  const segmentsLegacy = header === "ip,segments,manual_name" || header === "ip,segments,manual_name,auto_name";
-  const newHeader = header === "ip,segments,name" || header === "ip,segments,name,auto_name";
-  const extendedHeader = header === "ip,segments,name,auto_name,mac";
-  if (!legacyHeader && !segmentsLegacy && !newHeader && !extendedHeader) {
-    fatal("space.csv のヘッダは ip,segments,name[,auto_name][,mac]（旧: ip,user_space,manual_name）である必要があります。");
+  const headers = header.split(",").map((value) => value.trim());
+  if (!headers.includes("ip")) {
+    fatal("space.csv のヘッダに ip が含まれている必要があります。");
+  }
+
+  const normalizeKey = (key) => {
+    if (key === "user_space") return "segments";
+    if (key === "manual_name") return "name";
+    return key;
+  };
+
+  const normalizedHeaders = headers.map(normalizeKey);
+  const allowed = new Set(["ip", "segments", "name", "auto_name", "mac", "os_guess", "ssh_banner", "smb_banner", "cert_cn"]);
+  if (!normalizedHeaders.some((value) => value === "segments")) {
+    fatal("space.csv のヘッダに segments（または user_space）が必要です。");
+  }
+  if (!normalizedHeaders.some((value) => value === "name")) {
+    fatal("space.csv のヘッダに name（または manual_name）が必要です。");
+  }
+  if (!normalizedHeaders.every((value) => allowed.has(value))) {
+    fatal("space.csv のヘッダに未対応の列があります。");
   }
 
   for (let i = 1; i < lines.length; i += 1) {
     const line = lines[i];
     const parts = line.split(",");
-    if (parts.length < 3 || parts.length > 5) {
+    if (parts.length < 3) {
       fatal(`space.csv の ${i + 1} 行目が不正です。`);
     }
-    const [ip, segmentsValue, nameValue, autoName, macValue] = parts.map((value) => value.trim());
+    const values = parts.map((value) => value.trim());
+    const row = {};
+    normalizedHeaders.forEach((key, index) => {
+      row[key] = values[index] ?? "";
+    });
+    const ip = row.ip || "";
     if (!ip) {
       fatal(`space.csv の ${i + 1} 行目の ip が空です。`);
     }
@@ -504,10 +609,14 @@ function parseSpaceCsv(content) {
       fatal(`space.csv の ${i + 1} 行目の ip が不正です。`);
     }
     map.set(ip, {
-      segments: segmentsValue || "",
-      name: nameValue || "",
-      auto_name: autoName || "",
-      mac: macValue || "",
+      segments: row.segments || "",
+      name: row.name || "",
+      auto_name: row.auto_name || "",
+      mac: row.mac || "",
+      os_guess: row.os_guess || "",
+      ssh_banner: row.ssh_banner || "",
+      smb_banner: row.smb_banner || "",
+      cert_cn: row.cert_cn || "",
     });
   }
 
@@ -538,6 +647,10 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         name: existing.name || record.name || record.auto_name || "",
         auto_name: record.auto_name || existing.auto_name || "",
         mac: record.mac || existing.mac || "",
+        os_guess: record.os_guess || existing.os_guess || "",
+        ssh_banner: record.ssh_banner || existing.ssh_banner || "",
+        smb_banner: record.smb_banner || existing.smb_banner || "",
+        cert_cn: record.cert_cn || existing.cert_cn || "",
       });
     } else {
       merged.set(ip, {
@@ -545,16 +658,39 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         name: record.name || record.auto_name || "",
         auto_name: record.auto_name || "",
         mac: record.mac || "",
+        os_guess: record.os_guess || "",
+        ssh_banner: record.ssh_banner || "",
+        smb_banner: record.smb_banner || "",
+        cert_cn: record.cert_cn || "",
       });
     }
   }
 
-  const rows = ["ip,segments,name,auto_name,mac"];
+  const rows = ["ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn"];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
-    const entry = merged.get(ip) || { segments: "", name: "", auto_name: "", mac: "" };
+    const entry = merged.get(ip) || {
+      segments: "",
+      name: "",
+      auto_name: "",
+      mac: "",
+      os_guess: "",
+      ssh_banner: "",
+      smb_banner: "",
+      cert_cn: "",
+    };
     rows.push(
-      [ip, entry.segments || "", entry.name || "", entry.auto_name || "", entry.mac || ""]
+      [
+        ip,
+        entry.segments || "",
+        entry.name || "",
+        entry.auto_name || "",
+        entry.mac || "",
+        entry.os_guess || "",
+        entry.ssh_banner || "",
+        entry.smb_banner || "",
+        entry.cert_cn || "",
+      ]
         .map(csvEscape)
         .join(","),
     );
@@ -882,6 +1018,113 @@ function normalizeMac(mac) {
   return cleaned;
 }
 
+function parseTtlFromPing(output) {
+  const match = output.match(/ttl[=:\s]+(\d+)/i);
+  if (!match) return null;
+  const ttl = Number(match[1]);
+  return Number.isFinite(ttl) ? ttl : null;
+}
+
+function osGuessFromTtl(ttl) {
+  if (!ttl) return "";
+  if (ttl >= 128) return "Windows";
+  if (ttl >= 64) return "Linux/Unix";
+  if (ttl >= 1) return "Network/Embedded";
+  return "";
+}
+
+function pingAliveWithTtl(ip, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const { cmd, args } = getPingCommand(timeoutMs, ip);
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "ignore"] });
+    let output = "";
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString("utf8");
+    });
+    child.on("error", (error) => reject(error));
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ alive: true, ttl: parseTtlFromPing(output) });
+      } else {
+        resolve({ alive: false, ttl: null });
+      }
+    });
+  });
+}
+
+function sshBanner(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: ip, port: 22 }, () => {});
+    let banner = "";
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve("");
+    }, timeoutMs);
+
+    socket.on("data", (chunk) => {
+      banner += chunk.toString("utf8");
+      if (banner.includes("\n")) {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve(banner.split(/\r?\n/)[0].trim());
+      }
+    });
+    socket.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    socket.on("close", () => {
+      clearTimeout(timer);
+      if (!banner) resolve("");
+    });
+  });
+}
+
+function smbBanner(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: ip, port: 445 }, () => {
+      // SMB does not always send a banner; indicate port open.
+      resolve("SMB");
+      socket.destroy();
+    });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve("");
+    }, timeoutMs);
+    socket.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+  });
+}
+
+function certCommonName(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    const socket = tls.connect(
+      {
+        host: ip,
+        port: 443,
+        servername: ip,
+        rejectUnauthorized: false,
+        timeout: timeoutMs,
+      },
+      () => {
+        const cert = socket.getPeerCertificate();
+        socket.end();
+        const cn = cert && cert.subject && cert.subject.CN ? String(cert.subject.CN) : "";
+        resolve(cn);
+      },
+    );
+
+    socket.on("error", () => resolve(""));
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve("");
+    });
+  });
+}
+
 function parseMacTable(output) {
   const map = new Map();
   const lines = output.split(/\r?\n/);
@@ -951,7 +1194,7 @@ async function runSurvey(options) {
     }
   };
 
-  writeLine("segment,ip,segments,name,auto_name,mac,source");
+  writeLine("segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,source");
 
   const recordMap = new Map();
 
@@ -961,10 +1204,15 @@ async function runSurvey(options) {
     const hosts = enumerateHosts(segment.ipInt, segment.prefix);
     const aliveIps = [];
 
+    const ttlMap = new Map();
+
     try {
       await runWithConcurrency(hosts, options.pingConcurrency, async (ip) => {
-        const ok = await pingAlive(ip, options.timeout);
-        if (ok) aliveIps.push(ip);
+        const result = await pingAliveWithTtl(ip, options.timeout);
+        if (result.alive) {
+          aliveIps.push(ip);
+          if (result.ttl) ttlMap.set(ip, result.ttl);
+        }
       });
     } catch (error) {
       if (error && error.code === "ENOENT") {
@@ -976,7 +1224,16 @@ async function runSurvey(options) {
     aliveIps.sort((a, b) => ipToInt(a) - ipToInt(b));
 
     const records = aliveIps.map((ip) => {
-      const entry = spaceMap.get(ip) || { segments: "", name: "", auto_name: "", mac: "" };
+      const entry = spaceMap.get(ip) || {
+        segments: "",
+        name: "",
+        auto_name: "",
+        mac: "",
+        os_guess: "",
+        ssh_banner: "",
+        smb_banner: "",
+        cert_cn: "",
+      };
       return {
         segment: segment.name,
         ip,
@@ -984,11 +1241,20 @@ async function runSurvey(options) {
         name: entry.name || "",
         auto_name: "",
         mac: entry.mac || macTable.get(ip) || "",
+        os_guess: entry.os_guess || "",
+        ssh_banner: entry.ssh_banner || "",
+        smb_banner: entry.smb_banner || "",
+        cert_cn: entry.cert_cn || "",
         source: "none",
+        ttl: ttlMap.get(ip) || null,
       };
     });
 
     await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
+      if (options.osGuessEnabled && record.ttl) {
+        record.os_guess = osGuessFromTtl(record.ttl);
+      }
+
       if (options.dnsEnabled) {
         const rdns = normalizeName(await reverseDns(record.ip));
         if (rdns) {
@@ -1029,6 +1295,18 @@ async function runSurvey(options) {
       record.source = "none";
     });
 
+    await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
+      if (options.sshBannerEnabled && !record.ssh_banner) {
+        record.ssh_banner = await sshBanner(record.ip, options.sshTimeout);
+      }
+      if (options.smbBannerEnabled && !record.smb_banner) {
+        record.smb_banner = await smbBanner(record.ip, options.smbTimeout);
+      }
+      if (options.certCnEnabled && !record.cert_cn) {
+        record.cert_cn = await certCommonName(record.ip, options.certTimeout);
+      }
+    });
+
     for (const record of records) {
       if (!record.name && record.auto_name) {
         record.name = record.auto_name;
@@ -1047,6 +1325,10 @@ async function runSurvey(options) {
         record.name,
         record.auto_name,
         record.mac,
+        record.os_guess,
+        record.ssh_banner,
+        record.smb_banner,
+        record.cert_cn,
         record.source,
       ]
         .map(csvEscape)

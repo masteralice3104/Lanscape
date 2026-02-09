@@ -35,7 +35,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 
 ### 2.2 space.csv（任意）
 - ユーザ定義の「空間（segments）」と「手動名（name）」付与用
-- ヘッダ必須：`ip,segments,name,auto_name,mac`（旧: `ip,user_space,manual_name`）
+- ヘッダ必須：`ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn`（旧: `ip,user_space,manual_name`）
   - `name` は空でもよい（空欄なら `auto_name` で補完）
 - 例：
   - `192.168.100.204,portal,reverse-proxy`
@@ -98,7 +98,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 ### 5.2 CSV列（固定）
 ヘッダ行を必ず出力する：
 
-`segment,ip,segments,name,auto_name,mac,source`
+`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,source`
 
 - `segment`：segments.txt のセグメント名
 - `ip`：alive と判定したIP
@@ -106,6 +106,10 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 - `name`：space.csvの `name`（空欄なら `auto_name` で補完）
 - `auto_name`：rdns → mdns → netbios → http → 空
 - `mac`：ARP/近傍テーブルからのベストエフォート取得
+- `os_guess`：TTL由来のOS推定
+- `ssh_banner`：22/tcp バナー
+- `smb_banner`：445/tcp 応答（ベストエフォート）
+- `cert_cn`：443/tcp 証明書CN
 - `source`：manual / rdns / mdns / netbios / http / none
 
 ### 5.3 CSVエスケープ
