@@ -12,6 +12,7 @@ const tls = require("tls");
 const dgram = require("dgram");
 const snmp = require("net-snmp");
 const murmur = require("murmurhash3js-revisited");
+const iconv = require("iconv-lite");
 const multicastDns = require("multicast-dns");
 
 function fatal(message) {
@@ -1319,14 +1320,14 @@ function pingResolvedName(ip, timeoutMs) {
     const child = spawn("ping", ["-a", "-n", "1", "-w", String(timeoutMs), ip], {
       stdio: ["ignore", "pipe", "ignore"],
     });
-    let output = "";
+    const chunks = [];
     const timer = setTimeout(() => {
       child.kill();
       resolve("");
     }, timeoutMs);
 
     child.stdout.on("data", (chunk) => {
-      output += chunk.toString("utf8");
+      chunks.push(Buffer.from(chunk));
     });
     child.on("error", () => {
       clearTimeout(timer);
@@ -1334,6 +1335,8 @@ function pingResolvedName(ip, timeoutMs) {
     });
     child.on("close", () => {
       clearTimeout(timer);
+      const buffer = Buffer.concat(chunks);
+      const output = iconv.decode(buffer, "cp932");
       const matchEn = output.match(/Pinging\s+([^\s\[]+)\s*\[/i);
       if (matchEn && matchEn[1]) {
         resolve(matchEn[1]);
