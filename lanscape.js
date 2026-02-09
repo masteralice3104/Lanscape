@@ -445,17 +445,17 @@ function parseSpaceCsv(content) {
   }
 
   const header = lines[0].trim();
-  if (header !== "ip,user_space,manual_name") {
-    fatal("space.csv のヘッダは ip,user_space,manual_name である必要があります。");
+  if (header !== "ip,user_space,manual_name" && header !== "ip,user_space,manual_name,auto_name") {
+    fatal("space.csv のヘッダは ip,user_space,manual_name[,auto_name] である必要があります。");
   }
 
   for (let i = 1; i < lines.length; i += 1) {
     const line = lines[i];
     const parts = line.split(",");
-    if (parts.length !== 3) {
+    if (parts.length !== 3 && parts.length !== 4) {
       fatal(`space.csv の ${i + 1} 行目が不正です。`);
     }
-    const [ip, userSpace, manualName] = parts.map((value) => value.trim());
+    const [ip, userSpace, manualName, autoName] = parts.map((value) => value.trim());
     if (!ip) {
       fatal(`space.csv の ${i + 1} 行目の ip が空です。`);
     }
@@ -465,6 +465,7 @@ function parseSpaceCsv(content) {
     map.set(ip, {
       user_space: userSpace || "",
       manual_name: manualName || "",
+      auto_name: autoName || "",
     });
   }
 
@@ -482,21 +483,32 @@ function loadSpaceMap(spacePath, allowMissing) {
   return parseSpaceCsv(readTextFile(spacePath, "space.csv"));
 }
 
-function updateSpaceCsv(spacePath, spaceMap, aliveIps) {
+function updateSpaceCsv(spacePath, spaceMap, recordMap) {
   if (!spacePath) return;
 
   const merged = new Map(spaceMap);
-  for (const ip of aliveIps) {
-    if (!merged.has(ip)) {
-      merged.set(ip, { user_space: "", manual_name: "" });
+  for (const [ip, record] of recordMap.entries()) {
+    const existing = merged.get(ip);
+    if (existing) {
+      merged.set(ip, {
+        user_space: existing.user_space || "",
+        manual_name: existing.manual_name || "",
+        auto_name: record.auto_name || existing.auto_name || "",
+      });
+    } else {
+      merged.set(ip, {
+        user_space: "",
+        manual_name: "",
+        auto_name: record.auto_name || "",
+      });
     }
   }
 
-  const rows = ["ip,user_space,manual_name"];
+  const rows = ["ip,user_space,manual_name,auto_name"];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
-    const entry = merged.get(ip) || { user_space: "", manual_name: "" };
-    rows.push([ip, entry.user_space || "", entry.manual_name || ""].join(","));
+    const entry = merged.get(ip) || { user_space: "", manual_name: "", auto_name: "" };
+    rows.push([ip, entry.user_space || "", entry.manual_name || "", entry.auto_name || ""].join(","));
   }
 
   try {
@@ -588,6 +600,14 @@ function csvEscape(value) {
     return `"${escaped}"`;
   }
   return escaped;
+}
+
+function normalizeName(name) {
+  if (!name) return "";
+  const trimmed = String(name).trim();
+  if (!trimmed) return "";
+  const withoutDot = trimmed.replace(/\.$/, "");
+  return withoutDot.replace(/\.local$/i, "");
 }
 
 function runWithConcurrency(items, limit, worker) {
@@ -788,7 +808,7 @@ async function runSurvey(options) {
 
   writeLine("segment,ip,user_space,auto_name,source");
 
-  const allAliveIps = [];
+  const recordMap = new Map();
 
   for (const segment of segments) {
     const hosts = enumerateHosts(segment.ipInt, segment.prefix);
@@ -807,7 +827,6 @@ async function runSurvey(options) {
     }
 
     aliveIps.sort((a, b) => ipToInt(a) - ipToInt(b));
-    allAliveIps.push(...aliveIps);
 
     const records = aliveIps.map((ip) => {
       const entry = spaceMap.get(ip) || { user_space: "", manual_name: "" };
@@ -829,7 +848,7 @@ async function runSurvey(options) {
       }
 
       if (options.dnsEnabled) {
-        const rdns = await reverseDns(record.ip);
+        const rdns = normalizeName(await reverseDns(record.ip));
         if (rdns) {
           record.auto_name = rdns;
           record.source = "rdns";
@@ -838,7 +857,7 @@ async function runSurvey(options) {
       }
 
       if (options.mdnsEnabled) {
-        const mdnsName = await mdnsReverse(record.ip, options.mdnsTimeout);
+        const mdnsName = normalizeName(await mdnsReverse(record.ip, options.mdnsTimeout));
         if (mdnsName) {
           record.auto_name = mdnsName;
           record.source = "mdns";
@@ -847,7 +866,7 @@ async function runSurvey(options) {
       }
 
       if (options.netbiosEnabled) {
-        const nb = await netbiosName(record.ip, options.httpTimeout);
+        const nb = normalizeName(await netbiosName(record.ip, options.httpTimeout));
         if (nb) {
           record.auto_name = nb;
           record.source = "netbios";
@@ -856,7 +875,7 @@ async function runSurvey(options) {
       }
 
       if (options.httpTitleEnabled) {
-        const title = await httpTitle(record.ip, options.httpTimeout);
+        const title = normalizeName(await httpTitle(record.ip, options.httpTimeout));
         if (title) {
           record.auto_name = title;
           record.source = "http";
@@ -869,6 +888,7 @@ async function runSurvey(options) {
     });
 
     for (const record of records) {
+      recordMap.set(record.ip, record);
       const row = [
         record.segment,
         record.ip,
@@ -883,7 +903,7 @@ async function runSurvey(options) {
   }
 
   if (options.updateSpaceEnabled) {
-    updateSpaceCsv(options.spacePath, spaceMap, allAliveIps);
+    updateSpaceCsv(options.spacePath, spaceMap, recordMap);
   }
 
   if (outputStream) {

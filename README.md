@@ -44,7 +44,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - 例: `LAN 192.168.100.0/24`
 
 ### space.csv（任意）
-- ヘッダ必須: `ip,user_space,manual_name`
+- ヘッダ必須: `ip,user_space,manual_name,auto_name`（旧形式の3列も読み込み可）
 - 例:
 	- `192.168.100.204,portal,reverse-proxy`
 	- `192.168.100.1,edge,rtx210`
@@ -67,4 +67,5 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - mDNSは `multicast-dns` で PTR 逆引きを試行
 - NetBIOSは Windows のみ（`nbtstat -A`）
 - HTTPタイトルは `http://<ip>/` の `<title>`
+- `auto_name` は末尾の `.local` を自動で除去
 - MAC/ARP、SNMP/SSH、トポロジ推定は非対応
