@@ -677,7 +677,7 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
     if (existing) {
       merged.set(ip, {
         segments: nextSegments,
-        name: existing.name || record.name || record.auto_name || "",
+        name: existing.name || "",
         auto_name: record.auto_name || existing.auto_name || "",
         mac: record.mac || existing.mac || "",
         os_guess: record.os_guess || existing.os_guess || "",
@@ -692,7 +692,7 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
     } else {
       merged.set(ip, {
         segments: nextSegments,
-        name: record.name || record.auto_name || "",
+        name: "",
         auto_name: record.auto_name || "",
         mac: record.mac || "",
         os_guess: record.os_guess || "",
@@ -1330,39 +1330,20 @@ function sleep(ms) {
 
 async function runSurvey(options) {
   const segmentsContent = readTextFile(options.segmentsPath, "segments.txt");
-  const segments = parseSegments(segmentsContent);
-  const spaceMap = loadSpaceMap(options.spacePath, options.updateSpaceEnabled);
-  const outputStream = options.outputPath
-    ? fs.createWriteStream(options.outputPath, { encoding: "utf8" })
-    : null;
 
-  const writeLine = (line) => {
-    process.stdout.write(`${line}\n`);
-    if (outputStream) {
-      outputStream.write(`${line}\n`);
-    }
-  };
-
-  writeLine(
-    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source",
-  );
-
-  const recordMap = new Map();
-
-  const macTable = options.macEnabled ? await loadMacTable(options.macTimeout) : new Map();
-
-  for (const segment of segments) {
-    const hosts = enumerateHosts(segment.ipInt, segment.prefix);
-    const aliveIps = [];
-
-    const ttlMap = new Map();
-
-    try {
-      await runWithConcurrency(hosts, options.pingConcurrency, async (ip) => {
-        const result = await pingAliveWithTtl(ip, options.timeout);
-        if (result.alive) {
-          aliveIps.push(ip);
+  while (true) {
+    const startedAt = new Date();
+    process.stderr.write(`--- survey start ${startedAt.toISOString()} ---\n`);
+    await runSurvey(options);
+    const finishedAt = new Date();
+    process.stderr.write(`--- survey done  ${finishedAt.toISOString()} ---\n`);
+    await sleep(options.watchIntervalMs);
+  }
           if (result.ttl) ttlMap.set(ip, result.ttl);
+
+main().catch((error) => {
+  fatal(error && error.message ? error.message : String(error));
+});
         }
       });
     } catch (error) {
