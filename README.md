@@ -121,7 +121,7 @@ ip,segments,name
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
 - `name`: space.csv の `name`（空欄なら `auto_name` で補完）
-- `auto_name`: rDNS → mDNS → NetBIOS → ping -a → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
+- `auto_name`: mDNS → ping -a → rDNS → NetBIOS → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
 - `os_guess`: TTL からのOS推定（ベストエフォート）
 - `ssh_banner`: SSHのバナー（22/tcp）

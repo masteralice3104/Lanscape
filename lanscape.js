@@ -1339,9 +1339,14 @@ function pingResolvedName(ip, timeoutMs) {
         resolve(matchEn[1]);
         return;
       }
-      const firstLine = output.split(/\r?\n/)[0] || "";
-      const matchJp = firstLine.match(/^([^\s\[]+)\s*\[[0-9.]+\]/i);
-      resolve(matchJp ? matchJp[1] : "");
+      const lines = output.split(/\r?\n/);
+      const targetLine = lines.find((line) => line.includes("[") && line.includes("]")) || "";
+      const matchBracket = targetLine.match(/([^\s\[]+)\s*\[[0-9.]+\]/i);
+      if (matchBracket && matchBracket[1]) {
+        resolve(matchBracket[1]);
+        return;
+      }
+      resolve("");
     });
   });
 }
@@ -1749,15 +1754,6 @@ async function runSurvey(options) {
     });
 
     await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
-      if (options.dnsEnabled) {
-        const rdns = normalizeName(await reverseDns(record.ip));
-        if (rdns) {
-          record.auto_name = rdns;
-          record.source = "rdns";
-          return;
-        }
-      }
-
       if (options.mdnsEnabled) {
         const mdnsRaw = await mdnsReverse(record.ip, options.mdnsTimeout);
         const mdnsName = normalizeName(mdnsRaw);
@@ -1784,11 +1780,20 @@ async function runSurvey(options) {
         }
       }
 
-      if (options.netbiosEnabled) {
-        const nb = normalizeName(await netbiosName(record.ip, options.httpTimeout));
-        if (nb) {
-          record.auto_name = nb;
-          record.source = "netbios";
+      if (options.dnsEnabled) {
+        const rdns = normalizeName(await reverseDns(record.ip));
+        if (rdns) {
+          record.auto_name = rdns;
+          record.source = "rdns";
+          return;
+        }
+      }
+
+      if (options.pingNameEnabled) {
+        const pingName = normalizeName(await pingResolvedName(record.ip, options.timeout));
+        if (pingName) {
+          record.auto_name = pingName;
+          record.source = "ping";
           return;
         }
       }
