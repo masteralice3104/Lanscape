@@ -19,8 +19,6 @@
   "homepage": "https://github.com/masteralice3104/Lanscape#readme",
   "dependencies": {
     "iconv-lite": "^0.7.2",
-    "multicast-dns": "^7.2.5",
-    "murmurhash3js-revisited": "^3.0.0",
-    "net-snmp": "^3.26.1"
+    "multicast-dns": "^7.2.5"
   }
 }

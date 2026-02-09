@@ -4,7 +4,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 ## インストール
 - Windows / macOS / Linux
 - Node.js 20+
-- 依存: `multicast-dns`, `net-snmp`, `murmurhash3js-revisited`
+- 依存: `multicast-dns`
 	- `npm install`
 
 ## 使い方
@@ -29,10 +29,6 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--http-title` HTTPタイトル取得を有効化（既定ON）
 - `--no-http-title` HTTPタイトル取得を無効化
 - `--http-timeout <ms>` HTTP/NetBIOS タイムアウト（既定 2000）
-- `--http-headers` HTTPヘッダ取得を有効化（既定ON）
-- `--no-http-headers` HTTPヘッダ取得を無効化
-- `--favicon` Faviconハッシュ取得を有効化（既定ON）
-- `--no-favicon` Faviconハッシュ取得を無効化
 - `--mac` MACアドレス取得を有効化（既定ON）
 - `--no-mac` MACアドレス取得を無効化
 - `--mac-timeout <ms>` MAC取得タイムアウト（既定 2000）
@@ -49,15 +45,6 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--cert-timeout <ms>` 証明書タイムアウト（既定 2000）
 - `--ping-name` Windows の ping -a で名前解決（既定ON）
 - `--no-ping-name` ping -a の名前解決を無効化
-- `--ssdp` SSDPを有効化（既定ON）
-- `--no-ssdp` SSDPを無効化
-- `--ssdp-timeout <ms>` SSDPタイムアウト（既定 2000）
-- `--snmp` SNMPを有効化（既定ON）
-- `--no-snmp` SNMPを無効化
-- `--snmp-community <name>` SNMPコミュニティ（既定 public）
-- `--snmp-timeout <ms>` SNMPタイムアウト（既定 2000）
-- `--mdns-services` mDNSサービス取得を有効化（既定ON）
-- `--no-mdns-services` mDNSサービス取得を無効化
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
 - `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
@@ -91,7 +78,7 @@ SITEB 192.168.101.0/24
 
 ヘッダ（推奨/自動生成）:
 ```
-ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr
+ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server
 ```
 
 最小ヘッダ例（旧形式）:
@@ -115,7 +102,7 @@ ip,segments,name
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
 
-`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr,source`
+`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,source`
 
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
@@ -129,14 +116,6 @@ ip,segments,name
 - `cert_cn`: TLS証明書のCN（443/tcp）
 - `cert_san`: TLS証明書のSAN
 - `http_server`: HTTPのServerヘッダ
-- `http_powered_by`: HTTPのX-Powered-Byヘッダ
-- `http_www_auth`: HTTPのWWW-Authenticateヘッダ
-- `favicon_hash`: favicon.ico の Murmur3 ハッシュ
-- `mdns_services`: mDNSサービス（ベストエフォート）
-- `ssdp_server`: SSDPのServer
-- `ssdp_usn`: SSDPのUSN
-- `snmp_sysname`: SNMP sysName
-- `snmp_sysdescr`: SNMP sysDescr
 - `source`: `manual` / `lookup` / `rdns` / `mdns` / `netbios` / `ping` / `http` / `cert` / `ssh` / `none`
 
 ## 制約（v0.1）
@@ -152,6 +131,6 @@ ip,segments,name
 - MAC取得はARP/近傍テーブル依存のためVPN越しでは取得できない場合があります
 - OS推定はTTL由来のため正確性は保証できません
 - SMBバナーはポート疎通確認レベルのベストエフォートです
-- SSDP/SNMP/mDNSはネットワーク設定により取得できない場合があります
+- SSDP/SNMP/HTTPヘッダ/Favicon/mDNSサービス取得は削除しました（ノイズが多いため）
 - ping -a の名前解決は Windows の挙動に依存します
 - MAC/ARP、SNMP/SSH、トポロジ推定は非対応

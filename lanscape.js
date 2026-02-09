@@ -9,9 +9,6 @@ const http = require("http");
 const https = require("https");
 const net = require("net");
 const tls = require("tls");
-const dgram = require("dgram");
-const snmp = require("net-snmp");
-const murmur = require("murmurhash3js-revisited");
 const iconv = require("iconv-lite");
 const multicastDns = require("multicast-dns");
 
@@ -30,8 +27,6 @@ const DEFAULT_OPTIONS = {
   netbiosEnabled: process.platform === "win32",
   httpTitleEnabled: true,
   httpTimeout: 2000,
-  httpHeaderEnabled: true,
-  faviconEnabled: true,
   format: "csv",
   segmentsPath: null,
   spacePath: null,
@@ -50,12 +45,6 @@ const DEFAULT_OPTIONS = {
   certCnEnabled: true,
   certTimeout: 2000,
   pingNameEnabled: true,
-  ssdpEnabled: true,
-  ssdpTimeout: 2000,
-  snmpEnabled: true,
-  snmpCommunity: "public",
-  snmpTimeout: 2000,
-  mdnsServicesEnabled: true,
 };
 
 function parseArgs(argv) {
@@ -114,18 +103,6 @@ function parseArgs(argv) {
         case "--http-timeout":
           options.httpTimeout = Number(takeValue());
           break;
-        case "--http-headers":
-          options.httpHeaderEnabled = true;
-          break;
-        case "--no-http-headers":
-          options.httpHeaderEnabled = false;
-          break;
-        case "--favicon":
-          options.faviconEnabled = true;
-          break;
-        case "--no-favicon":
-          options.faviconEnabled = false;
-          break;
         case "--mac":
           options.macEnabled = true;
           break;
@@ -173,33 +150,6 @@ function parseArgs(argv) {
           break;
         case "--no-ping-name":
           options.pingNameEnabled = false;
-          break;
-        case "--ssdp":
-          options.ssdpEnabled = true;
-          break;
-        case "--no-ssdp":
-          options.ssdpEnabled = false;
-          break;
-        case "--ssdp-timeout":
-          options.ssdpTimeout = Number(takeValue());
-          break;
-        case "--snmp":
-          options.snmpEnabled = true;
-          break;
-        case "--no-snmp":
-          options.snmpEnabled = false;
-          break;
-        case "--snmp-community":
-          options.snmpCommunity = takeValue();
-          break;
-        case "--snmp-timeout":
-          options.snmpTimeout = Number(takeValue());
-          break;
-        case "--mdns-services":
-          options.mdnsServicesEnabled = true;
-          break;
-        case "--no-mdns-services":
-          options.mdnsServicesEnabled = false;
           break;
         case "--format":
           options.format = takeValue();
@@ -280,12 +230,6 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.certTimeout) || options.certTimeout <= 0) {
     fatal("--cert-timeout は正の数値で指定してください。");
-  }
-  if (!Number.isFinite(options.ssdpTimeout) || options.ssdpTimeout <= 0) {
-    fatal("--ssdp-timeout は正の数値で指定してください。");
-  }
-  if (!Number.isFinite(options.snmpTimeout) || options.snmpTimeout <= 0) {
-    fatal("--snmp-timeout は正の数値で指定してください。");
   }
   if (!Number.isFinite(options.watchIntervalMs) || options.watchIntervalMs <= 0) {
     fatal("--watch-interval は正の数値で指定してください。");
@@ -370,8 +314,6 @@ function saveConfig(filePath, options) {
     netbiosEnabled: options.netbiosEnabled,
     httpTitleEnabled: options.httpTitleEnabled,
     httpTimeout: options.httpTimeout,
-    httpHeaderEnabled: options.httpHeaderEnabled,
-    faviconEnabled: options.faviconEnabled,
     macEnabled: options.macEnabled,
     macTimeout: options.macTimeout,
     osGuessEnabled: options.osGuessEnabled,
@@ -382,12 +324,6 @@ function saveConfig(filePath, options) {
     certCnEnabled: options.certCnEnabled,
     certTimeout: options.certTimeout,
     pingNameEnabled: options.pingNameEnabled,
-    ssdpEnabled: options.ssdpEnabled,
-    ssdpTimeout: options.ssdpTimeout,
-    snmpEnabled: options.snmpEnabled,
-    snmpCommunity: options.snmpCommunity,
-    snmpTimeout: options.snmpTimeout,
-    mdnsServicesEnabled: options.mdnsServicesEnabled,
     format: options.format,
     outputPath: options.outputPath,
     watchEnabled: options.watchEnabled,
@@ -421,8 +357,6 @@ function applyConfig(options, config, override) {
   applyValue("netbiosEnabled");
   applyValue("httpTitleEnabled");
   applyValue("httpTimeout");
-  applyValue("httpHeaderEnabled");
-  applyValue("faviconEnabled");
   applyValue("macEnabled");
   applyValue("macTimeout");
   applyValue("osGuessEnabled");
@@ -433,12 +367,6 @@ function applyConfig(options, config, override) {
   applyValue("certCnEnabled");
   applyValue("certTimeout");
   applyValue("pingNameEnabled");
-  applyValue("ssdpEnabled");
-  applyValue("ssdpTimeout");
-  applyValue("snmpEnabled");
-  applyValue("snmpCommunity");
-  applyValue("snmpTimeout");
-  applyValue("mdnsServicesEnabled");
   applyValue("format");
   applyValue("outputPath");
   applyValue("watchEnabled");
@@ -455,7 +383,7 @@ async function ensureSampleFiles(prompt, targetDir) {
     {
       name: "space.csv",
       fallback:
-        "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr\n",
+        "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server\n",
     },
   ];
 
@@ -511,12 +439,6 @@ async function interactiveSetup(baseOptions, configPath) {
     const httpTimeout = httpTitleEnabled
       ? await askNumber(prompt, "HTTP タイムアウト(ms)", baseOptions.httpTimeout)
       : baseOptions.httpTimeout;
-    const httpHeaderEnabled = await askYesNo(
-      prompt,
-      "HTTP ヘッダ取得を有効にしますか",
-      baseOptions.httpHeaderEnabled,
-    );
-    const faviconEnabled = await askYesNo(prompt, "Favicon ハッシュ取得を有効にしますか", baseOptions.faviconEnabled);
     const macEnabled = await askYesNo(prompt, "MAC アドレスを取得しますか", baseOptions.macEnabled);
     const macTimeout = macEnabled
       ? await askNumber(prompt, "MAC 取得タイムアウト(ms)", baseOptions.macTimeout)
@@ -538,22 +460,6 @@ async function interactiveSetup(baseOptions, configPath) {
       prompt,
       "Windows の ping -a で名前解決を試しますか",
       baseOptions.pingNameEnabled,
-    );
-    const ssdpEnabled = await askYesNo(prompt, "SSDP を有効にしますか", baseOptions.ssdpEnabled);
-    const ssdpTimeout = ssdpEnabled
-      ? await askNumber(prompt, "SSDP タイムアウト(ms)", baseOptions.ssdpTimeout)
-      : baseOptions.ssdpTimeout;
-    const snmpEnabled = await askYesNo(prompt, "SNMP を有効にしますか", baseOptions.snmpEnabled);
-    const snmpCommunity = snmpEnabled
-      ? await prompt.ask("SNMP コミュニティ", baseOptions.snmpCommunity)
-      : baseOptions.snmpCommunity;
-    const snmpTimeout = snmpEnabled
-      ? await askNumber(prompt, "SNMP タイムアウト(ms)", baseOptions.snmpTimeout)
-      : baseOptions.snmpTimeout;
-    const mdnsServicesEnabled = await askYesNo(
-      prompt,
-      "mDNS サービス取得を有効にしますか",
-      baseOptions.mdnsServicesEnabled,
     );
     const saveOutput = await askYesNo(prompt, "出力CSVをファイルに保存しますか", false);
     const outputPath = saveOutput
@@ -581,8 +487,6 @@ async function interactiveSetup(baseOptions, configPath) {
       netbiosEnabled,
       httpTitleEnabled,
       httpTimeout,
-      httpHeaderEnabled,
-      faviconEnabled,
       macEnabled,
       macTimeout,
       osGuessEnabled,
@@ -593,12 +497,6 @@ async function interactiveSetup(baseOptions, configPath) {
       certCnEnabled,
       certTimeout,
       pingNameEnabled,
-      ssdpEnabled,
-      ssdpTimeout,
-      snmpEnabled,
-      snmpCommunity,
-      snmpTimeout,
-      mdnsServicesEnabled,
       outputPath: outputPath || null,
       watchEnabled,
       watchIntervalMs,
@@ -708,14 +606,6 @@ function parseSpaceCsv(content) {
     "cert_cn",
     "cert_san",
     "http_server",
-    "http_powered_by",
-    "http_www_auth",
-    "favicon_hash",
-    "mdns_services",
-    "ssdp_server",
-    "ssdp_usn",
-    "snmp_sysname",
-    "snmp_sysdescr",
   ]);
   if (!normalizedHeaders.some((value) => value === "segments")) {
     fatal("space.csv のヘッダに segments（または user_space）が必要です。");
@@ -756,14 +646,6 @@ function parseSpaceCsv(content) {
       cert_cn: row.cert_cn || "",
       cert_san: row.cert_san || "",
       http_server: row.http_server || "",
-      http_powered_by: row.http_powered_by || "",
-      http_www_auth: row.http_www_auth || "",
-      favicon_hash: row.favicon_hash || "",
-      mdns_services: row.mdns_services || "",
-      ssdp_server: row.ssdp_server || "",
-      ssdp_usn: row.ssdp_usn || "",
-      snmp_sysname: row.snmp_sysname || "",
-      snmp_sysdescr: row.snmp_sysdescr || "",
     });
   }
 
@@ -800,14 +682,6 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         cert_cn: record.cert_cn || existing.cert_cn || "",
         cert_san: record.cert_san || existing.cert_san || "",
         http_server: record.http_server || existing.http_server || "",
-        http_powered_by: record.http_powered_by || existing.http_powered_by || "",
-        http_www_auth: record.http_www_auth || existing.http_www_auth || "",
-        favicon_hash: record.favicon_hash || existing.favicon_hash || "",
-        mdns_services: record.mdns_services || existing.mdns_services || "",
-        ssdp_server: record.ssdp_server || existing.ssdp_server || "",
-        ssdp_usn: record.ssdp_usn || existing.ssdp_usn || "",
-        snmp_sysname: record.snmp_sysname || existing.snmp_sysname || "",
-        snmp_sysdescr: record.snmp_sysdescr || existing.snmp_sysdescr || "",
       });
     } else {
       merged.set(ip, {
@@ -821,20 +695,12 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         cert_cn: record.cert_cn || "",
         cert_san: record.cert_san || "",
         http_server: record.http_server || "",
-        http_powered_by: record.http_powered_by || "",
-        http_www_auth: record.http_www_auth || "",
-        favicon_hash: record.favicon_hash || "",
-        mdns_services: record.mdns_services || "",
-        ssdp_server: record.ssdp_server || "",
-        ssdp_usn: record.ssdp_usn || "",
-        snmp_sysname: record.snmp_sysname || "",
-        snmp_sysdescr: record.snmp_sysdescr || "",
       });
     }
   }
 
   const rows = [
-    "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr",
+    "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server",
   ];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
@@ -849,14 +715,6 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
       cert_cn: "",
       cert_san: "",
       http_server: "",
-      http_powered_by: "",
-      http_www_auth: "",
-      favicon_hash: "",
-      mdns_services: "",
-      ssdp_server: "",
-      ssdp_usn: "",
-      snmp_sysname: "",
-      snmp_sysdescr: "",
     };
     rows.push(
       [
@@ -871,14 +729,6 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         entry.cert_cn || "",
         entry.cert_san || "",
         entry.http_server || "",
-        entry.http_powered_by || "",
-        entry.http_www_auth || "",
-        entry.favicon_hash || "",
-        entry.mdns_services || "",
-        entry.ssdp_server || "",
-        entry.ssdp_usn || "",
-        entry.snmp_sysname || "",
-        entry.snmp_sysdescr || "",
       ]
         .map(csvEscape)
         .join(","),
@@ -1183,51 +1033,6 @@ function resolveRedirect(baseHost, location, baseScheme) {
   return { scheme: baseScheme, host: baseHost, path: `/${location}` };
 }
 
-function faviconHash(ip, timeoutMs) {
-  return new Promise((resolve) => {
-    const req = http.request(
-      {
-        host: ip,
-        port: 80,
-        path: "/favicon.ico",
-        method: "GET",
-        timeout: timeoutMs,
-        headers: {
-          "User-Agent": "Lanscape/0.1",
-        },
-      },
-      (res) => {
-        const chunks = [];
-        let total = 0;
-        const maxBytes = 256 * 1024;
-        res.on("data", (chunk) => {
-          if (total < maxBytes) {
-            chunks.push(chunk);
-            total += chunk.length;
-          }
-        });
-        res.on("end", () => {
-          if (chunks.length === 0) {
-            resolve("");
-            return;
-          }
-          const buffer = Buffer.concat(chunks);
-          const base64 = buffer.toString("base64");
-          const hash = murmur.x86.hash32(base64);
-          resolve(String(hash));
-        });
-      },
-    );
-
-    req.on("timeout", () => {
-      req.destroy();
-      resolve("");
-    });
-    req.on("error", () => resolve(""));
-    req.end();
-  });
-}
-
 function httpInfo(ip, timeoutMs) {
   const maxRedirects = 3;
 
@@ -1259,8 +1064,6 @@ function httpInfo(ip, timeoutMs) {
 
           let body = "";
           const serverHeader = res.headers.server ? String(res.headers.server) : "";
-          const poweredBy = res.headers["x-powered-by"] ? String(res.headers["x-powered-by"]) : "";
-          const wwwAuth = res.headers["www-authenticate"] ? String(res.headers["www-authenticate"]) : "";
           const maxBytes = 64 * 1024;
           res.on("data", (chunk) => {
             if (body.length < maxBytes) {
@@ -1278,15 +1081,15 @@ function httpInfo(ip, timeoutMs) {
             }
             const title = extractHtmlTitle(body);
             if (title && !isMeaninglessTitle(title)) {
-              resolve({ name: title, serverHeader, poweredBy, wwwAuth });
+              resolve({ name: title, serverHeader });
               return;
             }
             const serverName = normalizeName(serverHeader);
             if (serverName && !isMeaninglessTitle(serverName)) {
-              resolve({ name: serverName, serverHeader, poweredBy, wwwAuth });
+              resolve({ name: serverName, serverHeader });
               return;
             }
-            resolve({ name: "", serverHeader, poweredBy, wwwAuth });
+            resolve({ name: "", serverHeader });
           });
         },
       );
@@ -1456,115 +1259,6 @@ function certInfo(ip, timeoutMs) {
   });
 }
 
-function parseSsdpResponse(message) {
-  const text = message.toString("utf8");
-  const lines = text.split(/\r?\n/);
-  const headers = {};
-  for (const line of lines) {
-    const index = line.indexOf(":");
-    if (index > 0) {
-      const key = line.slice(0, index).trim().toLowerCase();
-      const value = line.slice(index + 1).trim();
-      headers[key] = value;
-    }
-  }
-  return {
-    server: headers.server || "",
-    usn: headers.usn || "",
-    st: headers.st || "",
-  };
-}
-
-function ssdpDiscover(timeoutMs) {
-  return new Promise((resolve) => {
-    const socket = dgram.createSocket("udp4");
-    const results = new Map();
-    const message = Buffer.from(
-      [
-        "M-SEARCH * HTTP/1.1",
-        "HOST: 239.255.255.250:1900",
-        "MAN: \"ssdp:discover\"",
-        "MX: 1",
-        "ST: ssdp:all",
-        "",
-        "",
-      ].join("\r\n"),
-    );
-
-    socket.on("message", (msg, rinfo) => {
-      const info = parseSsdpResponse(msg);
-      if (info.server || info.usn || info.st) {
-        results.set(rinfo.address, info);
-      }
-    });
-    socket.on("error", () => {
-      socket.close();
-      resolve(results);
-    });
-
-    socket.bind(() => {
-      socket.send(message, 0, message.length, 1900, "239.255.255.250");
-    });
-
-    setTimeout(() => {
-      socket.close();
-      resolve(results);
-    }, timeoutMs);
-  });
-}
-
-function snmpInfo(ip, community, timeoutMs) {
-  return new Promise((resolve) => {
-    const session = snmp.createSession(ip, community, { timeout: timeoutMs, retries: 0 });
-    const oids = ["1.3.6.1.2.1.1.5.0", "1.3.6.1.2.1.1.1.0"]; // sysName, sysDescr
-    session.get(oids, (error, varbinds) => {
-      session.close();
-      if (error) {
-        resolve({ sysName: "", sysDescr: "" });
-        return;
-      }
-      const sysName = varbinds[0] && varbinds[0].value ? String(varbinds[0].value) : "";
-      const sysDescr = varbinds[1] && varbinds[1].value ? String(varbinds[1].value) : "";
-      resolve({ sysName, sysDescr });
-    });
-  });
-}
-
-function mdnsServices(timeoutMs) {
-  return new Promise((resolve) => {
-    const mdns = multicastDns();
-    const serviceTypes = new Set();
-    const targetToServices = new Map();
-
-    const timer = setTimeout(() => {
-      mdns.destroy();
-      resolve(targetToServices);
-    }, timeoutMs);
-
-    mdns.on("response", (response) => {
-      const answers = response.answers || [];
-      for (const answer of answers) {
-        if (answer.type === "PTR" && answer.name === "_services._dns-sd._udp.local") {
-          serviceTypes.add(answer.data);
-          mdns.query({ questions: [{ name: answer.data, type: "PTR" }] });
-        }
-        if (answer.type === "PTR" && answer.name && answer.name.endsWith(".local")) {
-          mdns.query({ questions: [{ name: answer.data, type: "SRV" }] });
-        }
-        if (answer.type === "SRV" && answer.data && answer.data.target) {
-          const target = String(answer.data.target).replace(/\.$/, "");
-          const service = String(answer.name).split(".")[0];
-          if (!targetToServices.has(target)) {
-            targetToServices.set(target, new Set());
-          }
-          targetToServices.get(target).add(service);
-        }
-      }
-    });
-
-    mdns.query({ questions: [{ name: "_services._dns-sd._udp.local", type: "PTR" }] });
-  });
-}
 
 function parseMacTable(output) {
   const map = new Map();
@@ -1636,14 +1330,12 @@ async function runSurvey(options) {
   };
 
   writeLine(
-    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr,source",
+    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,source",
   );
 
   const recordMap = new Map();
 
   const macTable = options.macEnabled ? await loadMacTable(options.macTimeout) : new Map();
-  const ssdpMap = options.ssdpEnabled ? await ssdpDiscover(options.ssdpTimeout) : new Map();
-  const mdnsServiceMap = options.mdnsServicesEnabled ? await mdnsServices(options.mdnsTimeout) : new Map();
 
   for (const segment of segments) {
     const hosts = enumerateHosts(segment.ipInt, segment.prefix);
@@ -1680,14 +1372,6 @@ async function runSurvey(options) {
         cert_cn: "",
         cert_san: "",
         http_server: "",
-        http_powered_by: "",
-        http_www_auth: "",
-        favicon_hash: "",
-        mdns_services: "",
-        ssdp_server: "",
-        ssdp_usn: "",
-        snmp_sysname: "",
-        snmp_sysdescr: "",
       };
       return {
         segment: segment.name,
@@ -1702,28 +1386,12 @@ async function runSurvey(options) {
         cert_cn: entry.cert_cn || "",
         cert_san: entry.cert_san || "",
         http_server: entry.http_server || "",
-        http_powered_by: entry.http_powered_by || "",
-        http_www_auth: entry.http_www_auth || "",
-        favicon_hash: entry.favicon_hash || "",
-        mdns_services: entry.mdns_services || "",
-        ssdp_server: entry.ssdp_server || "",
-        ssdp_usn: entry.ssdp_usn || "",
-        snmp_sysname: entry.snmp_sysname || "",
-        snmp_sysdescr: entry.snmp_sysdescr || "",
         source: "none",
         ttl: ttlMap.get(ip) || null,
         mdns_host: "",
         http_name: "",
       };
     });
-
-    for (const record of records) {
-      const ssdpInfo = ssdpMap.get(record.ip);
-      if (ssdpInfo) {
-        record.ssdp_server = ssdpInfo.server || "";
-        record.ssdp_usn = ssdpInfo.usn || "";
-      }
-    }
 
     await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
       if (options.osGuessEnabled && record.ttl) {
@@ -1741,20 +1409,10 @@ async function runSurvey(options) {
         record.cert_cn = cert.cn || "";
         record.cert_san = cert.san || "";
       }
-      if ((options.httpTitleEnabled || options.httpHeaderEnabled) && !record.http_name) {
+      if (options.httpTitleEnabled && !record.http_name) {
         const info = await httpInfo(record.ip, options.httpTimeout);
         record.http_name = info.name || "";
         record.http_server = info.serverHeader || "";
-        record.http_powered_by = info.poweredBy || "";
-        record.http_www_auth = info.wwwAuth || "";
-      }
-      if (options.faviconEnabled && !record.favicon_hash) {
-        record.favicon_hash = await faviconHash(record.ip, options.httpTimeout);
-      }
-      if (options.snmpEnabled && !record.snmp_sysname && !record.snmp_sysdescr) {
-        const info = await snmpInfo(record.ip, options.snmpCommunity, options.snmpTimeout);
-        record.snmp_sysname = info.sysName || "";
-        record.snmp_sysdescr = info.sysDescr || "";
       }
     });
 
@@ -1771,10 +1429,6 @@ async function runSurvey(options) {
         const mdnsName = normalizeName(mdnsRaw);
         if (mdnsRaw) {
           record.mdns_host = mdnsRaw;
-          const services = mdnsServiceMap.get(mdnsRaw.replace(/\.$/, ""));
-          if (services && services.size > 0) {
-            record.mdns_services = Array.from(services).join(";");
-          }
         }
         if (mdnsName) {
           record.auto_name = mdnsName;
@@ -1874,14 +1528,6 @@ async function runSurvey(options) {
         record.cert_cn,
         record.cert_san,
         record.http_server,
-        record.http_powered_by,
-        record.http_www_auth,
-        record.favicon_hash,
-        record.mdns_services,
-        record.ssdp_server,
-        record.ssdp_usn,
-        record.snmp_sysname,
-        record.snmp_sysdescr,
         record.source,
       ]
         .map(csvEscape)
