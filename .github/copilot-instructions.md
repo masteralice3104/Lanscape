@@ -35,7 +35,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 
 ### 2.2 space.csv（任意）
 - ユーザ定義の「空間（segments）」と「手動名（name）」付与用
-- ヘッダ必須：`ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn`（旧: `ip,user_space,manual_name`）
+- ヘッダ必須：`ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr`（旧: `ip,user_space,manual_name`）
   - `name` は空でもよい（空欄なら `auto_name` で補完）
 - 例：
   - `192.168.100.204,portal,reverse-proxy`
@@ -98,13 +98,19 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 ### 5.2 CSV列（固定）
 ヘッダ行を必ず出力する：
 
-`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,source`
+`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr,source`
 
 - `segment`：segments.txt のセグメント名
 - `ip`：alive と判定したIP
 - `segments`：space.csvから（なければ空）
 - `name`：space.csvの `name`（空欄なら `auto_name` で補完）
 - `auto_name`：rdns → mdns → netbios → http(タイトル/Server) → cert → ssh → 空
+- `cert_san`：TLS証明書SAN
+- `http_server`/`http_powered_by`/`http_www_auth`：HTTPヘッダ
+- `favicon_hash`：favicon.ico のMurmur3
+- `mdns_services`：mDNSサービス
+- `ssdp_server`/`ssdp_usn`：SSDP応答
+- `snmp_sysname`/`snmp_sysdescr`：SNMP
 - `mac`：ARP/近傍テーブルからのベストエフォート取得
 - `os_guess`：TTL由来のOS推定
 - `ssh_banner`：22/tcp バナー
