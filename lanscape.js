@@ -986,6 +986,48 @@ function extractHtmlTitle(html) {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
+function isGenericName(name) {
+  if (!name) return true;
+  const value = String(name).trim().toLowerCase();
+  if (!value) return true;
+  const generic = [
+    "router",
+    "login",
+    "buffalo.setup",
+    "arcadyan httpd 1.0",
+    "httpd",
+    "mini_httpd",
+  ];
+  if (generic.includes(value)) return true;
+  if (/\b(router|login|httpd|setup)\b/i.test(value)) return true;
+  return false;
+}
+
+function detectHttpFingerprint(title, serverHeader, body) {
+  const text = `${title || ""}\n${serverHeader || ""}\n${body || ""}`.toLowerCase();
+  const patterns = [
+    { regex: /yamaha|\brtx\b/, name: "YAMAHA RTX" },
+    { regex: /buffalo|buffalo\.setup/, name: "BUFFALO" },
+    { regex: /arcadyan/, name: "Arcadyan Router" },
+    { regex: /tp-?link|tplink/, name: "TP-Link Router" },
+    { regex: /netgear/, name: "NETGEAR" },
+    { regex: /asus|asustek/, name: "ASUS Router" },
+    { regex: /synology/, name: "Synology NAS" },
+    { regex: /qnap/, name: "QNAP NAS" },
+    { regex: /i-?o data|iodata/, name: "I-O DATA" },
+    { regex: /aterm|nec\s*aterm|nec\b/, name: "NEC Aterm" },
+    { regex: /mikrotik|routeros/, name: "MikroTik Router" },
+    { regex: /openwrt/, name: "OpenWrt" },
+    { regex: /ubiquiti|unifi/, name: "Ubiquiti UniFi" },
+    { regex: /fortinet|fortigate/, name: "Fortinet" },
+    { regex: /cisco|linksys/, name: "Cisco/Linksys" },
+    { regex: /draytek/, name: "DrayTek" },
+    { regex: /zyxel/, name: "Zyxel" },
+  ];
+  const found = patterns.find((pattern) => pattern.regex.test(text));
+  return found ? found.name : "";
+}
+
 function extractMetaRefreshUrl(html) {
   const metaMatch = html.match(/<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*>/i);
   if (!metaMatch) return "";
@@ -1081,15 +1123,15 @@ function httpInfo(ip, timeoutMs) {
             }
             const title = extractHtmlTitle(body);
             if (title && !isMeaninglessTitle(title)) {
-              resolve({ name: title, serverHeader });
+              resolve({ name: title, serverHeader, body });
               return;
             }
             const serverName = normalizeName(serverHeader);
             if (serverName && !isMeaninglessTitle(serverName)) {
-              resolve({ name: serverName, serverHeader });
+              resolve({ name: serverName, serverHeader, body });
               return;
             }
-            resolve({ name: "", serverHeader });
+            resolve({ name: "", serverHeader, body });
           });
         },
       );
@@ -1413,6 +1455,11 @@ async function runSurvey(options) {
         const info = await httpInfo(record.ip, options.httpTimeout);
         record.http_name = info.name || "";
         record.http_server = info.serverHeader || "";
+        const fingerprint = detectHttpFingerprint(info.name, info.serverHeader, info.body);
+        if (fingerprint) {
+          record.auto_name = fingerprint;
+          record.source = "http-fp";
+        }
       }
     });
 
@@ -1464,12 +1511,18 @@ async function runSurvey(options) {
         }
       }
 
+      if (record.source === "http-fp" && record.auto_name) {
+        return;
+      }
+
       if (options.httpTitleEnabled && record.http_name) {
         const httpResult = normalizeName(record.http_name);
         if (httpResult) {
-          record.auto_name = httpResult;
-          record.source = "http";
-          return;
+          if (!record.auto_name || isGenericName(record.auto_name)) {
+            record.auto_name = httpResult;
+            record.source = "http";
+            return;
+          }
         }
       }
 
