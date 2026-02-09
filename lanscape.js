@@ -48,6 +48,7 @@ const DEFAULT_OPTIONS = {
   smbTimeout: 2000,
   certCnEnabled: true,
   certTimeout: 2000,
+  pingNameEnabled: true,
   ssdpEnabled: true,
   ssdpTimeout: 2000,
   snmpEnabled: true,
@@ -165,6 +166,12 @@ function parseArgs(argv) {
           break;
         case "--cert-timeout":
           options.certTimeout = Number(takeValue());
+          break;
+        case "--ping-name":
+          options.pingNameEnabled = true;
+          break;
+        case "--no-ping-name":
+          options.pingNameEnabled = false;
           break;
         case "--ssdp":
           options.ssdpEnabled = true;
@@ -373,6 +380,7 @@ function saveConfig(filePath, options) {
     smbTimeout: options.smbTimeout,
     certCnEnabled: options.certCnEnabled,
     certTimeout: options.certTimeout,
+    pingNameEnabled: options.pingNameEnabled,
     ssdpEnabled: options.ssdpEnabled,
     ssdpTimeout: options.ssdpTimeout,
     snmpEnabled: options.snmpEnabled,
@@ -423,6 +431,7 @@ function applyConfig(options, config, override) {
   applyValue("smbTimeout");
   applyValue("certCnEnabled");
   applyValue("certTimeout");
+  applyValue("pingNameEnabled");
   applyValue("ssdpEnabled");
   applyValue("ssdpTimeout");
   applyValue("snmpEnabled");
@@ -524,6 +533,11 @@ async function interactiveSetup(baseOptions, configPath) {
     const certTimeout = certCnEnabled
       ? await askNumber(prompt, "証明書取得タイムアウト(ms)", baseOptions.certTimeout)
       : baseOptions.certTimeout;
+    const pingNameEnabled = await askYesNo(
+      prompt,
+      "Windows の ping -a で名前解決を試しますか",
+      baseOptions.pingNameEnabled,
+    );
     const ssdpEnabled = await askYesNo(prompt, "SSDP を有効にしますか", baseOptions.ssdpEnabled);
     const ssdpTimeout = ssdpEnabled
       ? await askNumber(prompt, "SSDP タイムアウト(ms)", baseOptions.ssdpTimeout)
@@ -577,6 +591,7 @@ async function interactiveSetup(baseOptions, configPath) {
       smbTimeout,
       certCnEnabled,
       certTimeout,
+      pingNameEnabled,
       ssdpEnabled,
       ssdpTimeout,
       snmpEnabled,
@@ -1295,6 +1310,36 @@ function parseTtlFromPing(output) {
   return Number.isFinite(ttl) ? ttl : null;
 }
 
+function pingResolvedName(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve("");
+      return;
+    }
+    const child = spawn("ping", ["-a", "-n", "1", "-w", String(timeoutMs), ip], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let output = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve("");
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString("utf8");
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      const match = output.match(/Pinging\s+([^\s\[]+)\s*\[/i);
+      resolve(match ? match[1] : "");
+    });
+  });
+}
+
 function osGuessFromTtl(ttl) {
   if (!ttl) return "";
   if (ttl >= 128) return "Windows";
@@ -1730,6 +1775,15 @@ async function runSurvey(options) {
         if (nb) {
           record.auto_name = nb;
           record.source = "netbios";
+          return;
+        }
+      }
+
+      if (options.pingNameEnabled) {
+        const pingName = normalizeName(await pingResolvedName(record.ip, options.timeout));
+        if (pingName) {
+          record.auto_name = pingName;
+          record.source = "ping";
           return;
         }
       }

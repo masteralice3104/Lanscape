@@ -104,7 +104,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 - `ip`：alive と判定したIP
 - `segments`：space.csvから（なければ空）
 - `name`：space.csvの `name`（空欄なら `auto_name` で補完）
-- `auto_name`：rdns → mdns → netbios → http(タイトル/Server) → cert → ssh → 空
+- `auto_name`：rdns → mdns → netbios → ping -a → http(タイトル/Server) → cert → ssh → 空
 - `cert_san`：TLS証明書SAN
 - `http_server`/`http_powered_by`/`http_www_auth`：HTTPヘッダ
 - `favicon_hash`：favicon.ico のMurmur3
@@ -116,7 +116,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 - `ssh_banner`：22/tcp バナー
 - `smb_banner`：445/tcp 応答（ベストエフォート）
 - `cert_cn`：443/tcp 証明書CN
-- `source`：manual / rdns / mdns / netbios / http / none
+- `source`：manual / rdns / mdns / netbios / ping / http / cert / ssh / none
 
 ### 5.3 CSVエスケープ
 - 値にカンマ/改行/ダブルクォートが入る可能性があるため、最低限のエスケープを実装する：

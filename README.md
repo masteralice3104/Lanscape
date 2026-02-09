@@ -47,6 +47,8 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--cert-cn` 証明書CN取得を有効化（既定ON）
 - `--no-cert-cn` 証明書CN取得を無効化
 - `--cert-timeout <ms>` 証明書タイムアウト（既定 2000）
+- `--ping-name` Windows の ping -a で名前解決（既定ON）
+- `--no-ping-name` ping -a の名前解決を無効化
 - `--ssdp` SSDPを有効化（既定ON）
 - `--no-ssdp` SSDPを無効化
 - `--ssdp-timeout <ms>` SSDPタイムアウト（既定 2000）
@@ -119,7 +121,7 @@ ip,segments,name
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
 - `name`: space.csv の `name`（空欄なら `auto_name` で補完）
-- `auto_name`: rDNS → mDNS → NetBIOS → HTTPタイトル/Serverヘッダ → 証明書CN → SSHバナー → 空 の優先順
+- `auto_name`: rDNS → mDNS → NetBIOS → ping -a → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
 - `os_guess`: TTL からのOS推定（ベストエフォート）
 - `ssh_banner`: SSHのバナー（22/tcp）
@@ -135,7 +137,7 @@ ip,segments,name
 - `ssdp_usn`: SSDPのUSN
 - `snmp_sysname`: SNMP sysName
 - `snmp_sysdescr`: SNMP sysDescr
-- `source`: `manual` / `rdns` / `mdns` / `netbios` / `http` / `none`
+- `source`: `manual` / `rdns` / `mdns` / `netbios` / `ping` / `http` / `cert` / `ssh` / `none`
 
 ## 制約（v0.1）
 - OS標準 `ping` を起動して判定（OSごとに引数が異なる）
@@ -151,4 +153,5 @@ ip,segments,name
 - OS推定はTTL由来のため正確性は保証できません
 - SMBバナーはポート疎通確認レベルのベストエフォートです
 - SSDP/SNMP/mDNSはネットワーク設定により取得できない場合があります
+- ping -a の名前解決は Windows の挙動に依存します
 - MAC/ARP、SNMP/SSH、トポロジ推定は非対応
