@@ -1420,7 +1420,6 @@ function certInfo(ip, timeoutMs) {
       {
         host: ip,
         port: 443,
-        servername: ip,
         rejectUnauthorized: false,
         timeout: timeoutMs,
       },
