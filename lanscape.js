@@ -936,6 +936,26 @@ function extractHtmlTitle(html) {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
+function isMeaninglessTitle(title) {
+  if (!title) return true;
+  const value = title.trim().toLowerCase();
+  if (!value) return true;
+  const badPatterns = [
+    /^error/,
+    /^login$/, /^login\b/, /^sign in$/, /^sign-in$/, /^signin$/, /^sign in\b/, /^sign\s?in\b/,
+    /^forbidden$/, /^unauthorized$/, /^not found$/, /^bad request$/,
+    /^moved permanently$/, /^301$/, /^302$/, /^redirect$/, /^redirected$/,
+    /^access denied$/, /^service unavailable$/, /^internal server error$/,
+  ];
+  if (badPatterns.some((pattern) => pattern.test(value))) {
+    return true;
+  }
+  if (/\b(error|login|sign\s?in|forbidden|unauthorized|not found|moved permanently|redirect)\b/i.test(value)) {
+    return true;
+  }
+  return false;
+}
+
 function resolveRedirect(baseHost, location) {
   if (!location) return null;
   if (/^https?:\/\//i.test(location)) {
@@ -988,12 +1008,8 @@ function httpTitle(ip, timeoutMs) {
           });
           res.on("end", () => {
             const title = extractHtmlTitle(body);
-            if (title) {
+            if (title && !isMeaninglessTitle(title)) {
               resolve(title);
-              return;
-            }
-            if (status >= 200 && status < 600) {
-              resolve("Server");
               return;
             }
             resolve("");
