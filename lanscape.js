@@ -357,7 +357,7 @@ async function interactiveSetup(baseOptions, configPath) {
       : baseOptions.watchIntervalMs;
     const updateSpaceEnabled = await askYesNo(prompt, "space.csv を自動更新しますか", true);
     const spaceFromSegment = updateSpaceEnabled
-      ? await askYesNo(prompt, "user_space をセグメント名で上書きしますか", baseOptions.spaceFromSegment)
+      ? await askYesNo(prompt, "segments をセグメント名で上書きしますか", baseOptions.spaceFromSegment)
       : baseOptions.spaceFromSegment;
 
     const options = {
@@ -458,8 +458,10 @@ function parseSpaceCsv(content) {
   }
 
   const header = lines[0].trim();
-  if (header !== "ip,user_space,manual_name" && header !== "ip,user_space,manual_name,auto_name") {
-    fatal("space.csv のヘッダは ip,user_space,manual_name[,auto_name] である必要があります。");
+  const legacyHeader = header === "ip,user_space,manual_name" || header === "ip,user_space,manual_name,auto_name";
+  const newHeader = header === "ip,segments,manual_name" || header === "ip,segments,manual_name,auto_name";
+  if (!legacyHeader && !newHeader) {
+    fatal("space.csv のヘッダは ip,segments,manual_name[,auto_name]（旧: ip,user_space,manual_name）である必要があります。");
   }
 
   for (let i = 1; i < lines.length; i += 1) {
@@ -468,7 +470,7 @@ function parseSpaceCsv(content) {
     if (parts.length !== 3 && parts.length !== 4) {
       fatal(`space.csv の ${i + 1} 行目が不正です。`);
     }
-    const [ip, userSpace, manualName, autoName] = parts.map((value) => value.trim());
+    const [ip, segmentsValue, manualName, autoName] = parts.map((value) => value.trim());
     if (!ip) {
       fatal(`space.csv の ${i + 1} 行目の ip が空です。`);
     }
@@ -476,7 +478,7 @@ function parseSpaceCsv(content) {
       fatal(`space.csv の ${i + 1} 行目の ip が不正です。`);
     }
     map.set(ip, {
-      user_space: userSpace || "",
+      segments: segmentsValue || "",
       manual_name: manualName || "",
       auto_name: autoName || "",
     });
@@ -502,27 +504,27 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
   const merged = new Map(spaceMap);
   for (const [ip, record] of recordMap.entries()) {
     const existing = merged.get(ip);
-    const nextUserSpace = spaceFromSegment && record.segment ? record.segment : existing?.user_space || "";
+    const nextSegments = spaceFromSegment && record.segment ? record.segment : existing?.segments || "";
     if (existing) {
       merged.set(ip, {
-        user_space: nextUserSpace,
+        segments: nextSegments,
         manual_name: existing.manual_name || "",
         auto_name: record.auto_name || existing.auto_name || "",
       });
     } else {
       merged.set(ip, {
-        user_space: nextUserSpace,
+        segments: nextSegments,
         manual_name: "",
         auto_name: record.auto_name || "",
       });
     }
   }
 
-  const rows = ["ip,user_space,manual_name,auto_name"];
+  const rows = ["ip,segments,manual_name,auto_name"];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
-    const entry = merged.get(ip) || { user_space: "", manual_name: "", auto_name: "" };
-    rows.push([ip, entry.user_space || "", entry.manual_name || "", entry.auto_name || ""].join(","));
+    const entry = merged.get(ip) || { segments: "", manual_name: "", auto_name: "" };
+    rows.push([ip, entry.segments || "", entry.manual_name || "", entry.auto_name || ""].join(","));
   }
 
   try {
@@ -820,7 +822,7 @@ async function runSurvey(options) {
     }
   };
 
-  writeLine("segment,ip,user_space,auto_name,source");
+  writeLine("segment,ip,segments,auto_name,source");
 
   const recordMap = new Map();
 
@@ -843,11 +845,11 @@ async function runSurvey(options) {
     aliveIps.sort((a, b) => ipToInt(a) - ipToInt(b));
 
     const records = aliveIps.map((ip) => {
-      const entry = spaceMap.get(ip) || { user_space: "", manual_name: "" };
+      const entry = spaceMap.get(ip) || { segments: "", manual_name: "" };
       return {
         segment: segment.name,
         ip,
-        user_space: entry.user_space || "",
+        segments: entry.segments || "",
         manual_name: entry.manual_name || "",
         auto_name: "",
         source: "none",
@@ -906,7 +908,7 @@ async function runSurvey(options) {
       const row = [
         record.segment,
         record.ip,
-        record.user_space,
+        record.segments,
         record.auto_name,
         record.source,
       ]

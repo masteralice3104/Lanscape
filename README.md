@@ -34,7 +34,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
 - `--update-space` space.csv を自動更新（既定）
 - `--no-update-space` space.csv の自動更新を無効化
-- `--space-from-segment` space.csv の user_space をセグメント名で上書き（既定ON）
+- `--space-from-segment` space.csv の segments をセグメント名で上書き（既定ON）
 - `--no-space-from-segment` 上書きを無効化
 - `--watch` 定期更新を有効化
 - `--once` 単発実行（定期更新を無効化）
@@ -46,21 +46,21 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - 例: `LAN 192.168.100.0/24`
 
 ### space.csv（任意）
-- ヘッダ必須: `ip,user_space,manual_name,auto_name`（旧形式の3列も読み込み可）
+- ヘッダ必須: `ip,segments,manual_name,auto_name`（旧形式の3列も読み込み可）
 - 例:
 	- `192.168.100.204,portal,reverse-proxy`
 	- `192.168.100.1,edge,rtx210`
 - `--update-space` 有効時は、生存IPが毎回 space.csv に追記/更新されます。
-- `--space-from-segment` 有効時は `user_space` を segments.txt のセグメント名で上書きします。
+- `--space-from-segment` 有効時は `segments` を segments.txt のセグメント名で上書きします。
 
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
 
-`segment,ip,user_space,auto_name,source`
+`segment,ip,segments,auto_name,source`
 
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
-- `user_space`: space.csv の `user_space`
+- `segments`: space.csv の `segments`
 - `auto_name`: `manual_name` → rDNS → mDNS → NetBIOS → HTTPタイトル → 空 の優先順
 - `source`: `manual` / `rdns` / `mdns` / `netbios` / `http` / `none`
 
