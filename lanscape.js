@@ -1558,34 +1558,16 @@ async function main() {
     return;
   }
 
-    if (existing) {
-      merged.set(ip, {
-        segments: nextSegments,
-        name: existing.name || "",
-        auto_name: record.auto_name || existing.auto_name || "",
-        mac: record.mac || existing.mac || "",
-        os_guess: record.os_guess || existing.os_guess || "",
-        ssh_banner: record.ssh_banner || existing.ssh_banner || "",
-        smb_banner: record.smb_banner || existing.smb_banner || "",
-        cert_cn: record.cert_cn || existing.cert_cn || "",
-        cert_san: record.cert_san || existing.cert_san || "",
-        http_server: record.http_server || existing.http_server || "",
-        http_status: record.http_status || existing.http_status || "",
-        http_location: record.http_location || existing.http_location || "",
-      });
-    } else {
-      merged.set(ip, {
-        segments: nextSegments,
-        name: "",
-        auto_name: record.auto_name || "",
-        mac: record.mac || "",
-        os_guess: record.os_guess || "",
-        ssh_banner: record.ssh_banner || "",
-        smb_banner: record.smb_banner || "",
-        cert_cn: record.cert_cn || "",
-        cert_san: record.cert_san || "",
-        http_server: record.http_server || "",
-        http_status: record.http_status || "",
-        http_location: record.http_location || "",
-      });
-    }
+  while (true) {
+    const startedAt = new Date();
+    process.stderr.write(`--- survey start ${startedAt.toISOString()} ---\n`);
+    await runSurvey(options);
+    const finishedAt = new Date();
+    process.stderr.write(`--- survey done  ${finishedAt.toISOString()} ---\n`);
+    await sleep(options.watchIntervalMs);
+  }
+}
+
+main().catch((error) => {
+  fatal(error && error.message ? error.message : String(error));
+});
