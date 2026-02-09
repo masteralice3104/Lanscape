@@ -19,6 +19,7 @@ const DEFAULT_OPTIONS = {
   format: "csv",
   segmentsPath: null,
   spacePath: null,
+  outputPath: null,
 };
 
 function parseArgs(argv) {
@@ -55,6 +56,9 @@ function parseArgs(argv) {
           break;
         case "--format":
           options.format = takeValue();
+          break;
+        case "--output":
+          options.outputPath = takeValue();
           break;
         case "--config":
           configPath = takeValue();
@@ -167,6 +171,7 @@ function saveConfig(filePath, options) {
     dnsConcurrency: options.dnsConcurrency,
     dnsEnabled: options.dnsEnabled,
     format: options.format,
+    outputPath: options.outputPath,
   };
   try {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -190,6 +195,7 @@ function applyConfig(options, config, override) {
   applyValue("dnsConcurrency");
   applyValue("dnsEnabled");
   applyValue("format");
+  applyValue("outputPath");
 
   return options;
 }
@@ -245,6 +251,10 @@ async function interactiveSetup(baseOptions, configPath) {
     const pingConcurrency = await askNumber(prompt, "ping 並列数", baseOptions.pingConcurrency);
     const dnsConcurrency = await askNumber(prompt, "rDNS 並列数", baseOptions.dnsConcurrency);
     const dnsEnabled = await askYesNo(prompt, "rDNS を有効にしますか", baseOptions.dnsEnabled);
+    const saveOutput = await askYesNo(prompt, "出力CSVをファイルに保存しますか", false);
+    const outputPath = saveOutput
+      ? await prompt.ask("保存先ファイルパス", "inventory.csv")
+      : "";
 
     const options = {
       ...baseOptions,
@@ -254,6 +264,7 @@ async function interactiveSetup(baseOptions, configPath) {
       pingConcurrency,
       dnsConcurrency,
       dnsEnabled,
+      outputPath: outputPath || null,
     };
 
     const save = await askYesNo(prompt, `設定を保存しますか (${configPath})`, true);
@@ -497,8 +508,18 @@ async function main() {
   const spaceMap = options.spacePath
     ? parseSpaceCsv(readTextFile(options.spacePath, "space.csv"))
     : new Map();
+  const outputStream = options.outputPath
+    ? fs.createWriteStream(options.outputPath, { encoding: "utf8" })
+    : null;
 
-  process.stdout.write("segment,ip,user_space,auto_name,source\n");
+  const writeLine = (line) => {
+    process.stdout.write(`${line}\n`);
+    if (outputStream) {
+      outputStream.write(`${line}\n`);
+    }
+  };
+
+  writeLine("segment,ip,user_space,auto_name,source");
 
   for (const segment of segments) {
     const hosts = enumerateHosts(segment.ipInt, segment.prefix);
@@ -568,8 +589,12 @@ async function main() {
       ]
         .map(csvEscape)
         .join(",");
-      process.stdout.write(`${row}\n`);
+      writeLine(row);
     }
+  }
+
+  if (outputStream) {
+    await new Promise((resolve) => outputStream.end(resolve));
   }
 }
 
