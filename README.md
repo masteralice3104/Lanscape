@@ -20,6 +20,11 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `--ping-concurrency <n>` ping並列（既定 80）
 - `--dns-concurrency <n>` rDNS並列（既定 30）
 - `--no-dns` rDNSを無効化
+- `--netbios` NetBIOS名取得を有効化（既定ON）
+- `--no-netbios` NetBIOS名取得を無効化
+- `--http-title` HTTPタイトル取得を有効化（既定ON）
+- `--no-http-title` HTTPタイトル取得を無効化
+- `--http-timeout <ms>` HTTP/NetBIOS タイムアウト（既定 2000）
 - `--format csv` 将来拡張用（v0.1はcsvのみ）
 - `--config <path>` 設定ファイルを指定（既定: ./lanscape.config.json）
 - `--output <path>` 出力CSVを指定ファイルへ保存（stdoutにも出力）
@@ -49,11 +54,13 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
 - `user_space`: space.csv の `user_space`
-- `auto_name`: `manual_name` → rDNS → 空 の優先順
-- `source`: `manual` / `rdns` / `none`
+- `auto_name`: `manual_name` → rDNS → NetBIOS → HTTPタイトル → 空 の優先順
+- `source`: `manual` / `rdns` / `netbios` / `http` / `none`
 
 ## 制約（v0.1）
 - Windows前提、Node.jsのみ（TypeScriptは使わない）
 - ICMPはOS標準 `ping` を起動して判定
 - rDNSは `dns.promises.reverse()` のみ
+- NetBIOSは `nbtstat -A` の結果から <00> UNIQUE を取得
+- HTTPタイトルは `http://<ip>/` の `<title>` を取得
 - MAC/ARP、SNMP/SSH、mDNS/NBNS/HTTPバナー、トポロジ推定は非対応

@@ -5,6 +5,7 @@ const path = require("path");
 const readline = require("readline");
 const dns = require("dns").promises;
 const { spawn } = require("child_process");
+const http = require("http");
 
 function fatal(message) {
   process.stderr.write(`${message}\n`);
@@ -16,6 +17,9 @@ const DEFAULT_OPTIONS = {
   pingConcurrency: 80,
   dnsConcurrency: 30,
   dnsEnabled: true,
+  netbiosEnabled: true,
+  httpTitleEnabled: true,
+  httpTimeout: 2000,
   format: "csv",
   segmentsPath: null,
   spacePath: null,
@@ -56,6 +60,21 @@ function parseArgs(argv) {
           break;
         case "--no-dns":
           options.dnsEnabled = false;
+          break;
+        case "--netbios":
+          options.netbiosEnabled = true;
+          break;
+        case "--no-netbios":
+          options.netbiosEnabled = false;
+          break;
+        case "--http-title":
+          options.httpTitleEnabled = true;
+          break;
+        case "--no-http-title":
+          options.httpTitleEnabled = false;
+          break;
+        case "--http-timeout":
+          options.httpTimeout = Number(takeValue());
           break;
         case "--format":
           options.format = takeValue();
@@ -112,6 +131,9 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.dnsConcurrency) || options.dnsConcurrency <= 0) {
     fatal("--dns-concurrency は正の数値で指定してください。");
+  }
+  if (!Number.isFinite(options.httpTimeout) || options.httpTimeout <= 0) {
+    fatal("--http-timeout は正の数値で指定してください。");
   }
   if (!Number.isFinite(options.watchIntervalMs) || options.watchIntervalMs <= 0) {
     fatal("--watch-interval は正の数値で指定してください。");
@@ -191,6 +213,9 @@ function saveConfig(filePath, options) {
     pingConcurrency: options.pingConcurrency,
     dnsConcurrency: options.dnsConcurrency,
     dnsEnabled: options.dnsEnabled,
+    netbiosEnabled: options.netbiosEnabled,
+    httpTitleEnabled: options.httpTitleEnabled,
+    httpTimeout: options.httpTimeout,
     format: options.format,
     outputPath: options.outputPath,
     watchEnabled: options.watchEnabled,
@@ -218,6 +243,9 @@ function applyConfig(options, config, override) {
   applyValue("pingConcurrency");
   applyValue("dnsConcurrency");
   applyValue("dnsEnabled");
+  applyValue("netbiosEnabled");
+  applyValue("httpTitleEnabled");
+  applyValue("httpTimeout");
   applyValue("format");
   applyValue("outputPath");
   applyValue("watchEnabled");
@@ -278,6 +306,15 @@ async function interactiveSetup(baseOptions, configPath) {
     const pingConcurrency = await askNumber(prompt, "ping 並列数", baseOptions.pingConcurrency);
     const dnsConcurrency = await askNumber(prompt, "rDNS 並列数", baseOptions.dnsConcurrency);
     const dnsEnabled = await askYesNo(prompt, "rDNS を有効にしますか", baseOptions.dnsEnabled);
+    const netbiosEnabled = await askYesNo(prompt, "NetBIOS 名を取得しますか", baseOptions.netbiosEnabled);
+    const httpTitleEnabled = await askYesNo(
+      prompt,
+      "HTTP タイトルから名前を取得しますか",
+      baseOptions.httpTitleEnabled,
+    );
+    const httpTimeout = httpTitleEnabled
+      ? await askNumber(prompt, "HTTP タイムアウト(ms)", baseOptions.httpTimeout)
+      : baseOptions.httpTimeout;
     const saveOutput = await askYesNo(prompt, "出力CSVをファイルに保存しますか", false);
     const outputPath = saveOutput
       ? await prompt.ask("保存先ファイルパス", "inventory.csv")
@@ -296,6 +333,9 @@ async function interactiveSetup(baseOptions, configPath) {
       pingConcurrency,
       dnsConcurrency,
       dnsEnabled,
+      netbiosEnabled,
+      httpTitleEnabled,
+      httpTimeout,
       outputPath: outputPath || null,
       watchEnabled,
       watchIntervalMs,
@@ -577,6 +617,84 @@ async function reverseDns(ip) {
   }
 }
 
+function parseNetbiosName(output) {
+  const lines = output.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*([^\s]+)\s+<00>\s+UNIQUE/i);
+    if (match) {
+      return match[1];
+    }
+  }
+  return "";
+}
+
+function netbiosName(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    const child = spawn("nbtstat", ["-A", ip], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let output = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve("");
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      output += chunk.toString("utf8");
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      resolve(parseNetbiosName(output));
+    });
+  });
+}
+
+function extractHtmlTitle(html) {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!match) return "";
+  return match[1].replace(/\s+/g, " ").trim();
+}
+
+function httpTitle(ip, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        host: ip,
+        port: 80,
+        path: "/",
+        method: "GET",
+        timeout: timeoutMs,
+        headers: {
+          "User-Agent": "Lanscape/0.1",
+        },
+      },
+      (res) => {
+        let body = "";
+        const maxBytes = 64 * 1024;
+        res.on("data", (chunk) => {
+          if (body.length < maxBytes) {
+            body += chunk.toString("utf8");
+          }
+        });
+        res.on("end", () => {
+          resolve(extractHtmlTitle(body));
+        });
+      },
+    );
+
+    req.on("timeout", () => {
+      req.destroy();
+      resolve("");
+    });
+    req.on("error", () => resolve(""));
+    req.end();
+  });
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -631,33 +749,43 @@ async function runSurvey(options) {
       };
     });
 
-    if (options.dnsEnabled) {
-      await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
-        if (record.manual_name) {
-          record.auto_name = record.manual_name;
-          record.source = "manual";
-          return;
-        }
+    await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
+      if (record.manual_name) {
+        record.auto_name = record.manual_name;
+        record.source = "manual";
+        return;
+      }
+
+      if (options.dnsEnabled) {
         const rdns = await reverseDns(record.ip);
         if (rdns) {
           record.auto_name = rdns;
           record.source = "rdns";
-        } else {
-          record.auto_name = "";
-          record.source = "none";
-        }
-      });
-    } else {
-      for (const record of records) {
-        if (record.manual_name) {
-          record.auto_name = record.manual_name;
-          record.source = "manual";
-        } else {
-          record.auto_name = "";
-          record.source = "none";
+          return;
         }
       }
-    }
+
+      if (options.netbiosEnabled) {
+        const nb = await netbiosName(record.ip, options.httpTimeout);
+        if (nb) {
+          record.auto_name = nb;
+          record.source = "netbios";
+          return;
+        }
+      }
+
+      if (options.httpTitleEnabled) {
+        const title = await httpTitle(record.ip, options.httpTimeout);
+        if (title) {
+          record.auto_name = title;
+          record.source = "http";
+          return;
+        }
+      }
+
+      record.auto_name = "";
+      record.source = "none";
+    });
 
     for (const record of records) {
       const row = [
