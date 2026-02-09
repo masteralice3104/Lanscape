@@ -800,40 +800,80 @@ function extractHtmlTitle(html) {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
-function httpTitle(ip, timeoutMs) {
-  return new Promise((resolve) => {
-    const req = http.request(
-      {
-        host: ip,
-        port: 80,
-        path: "/",
-        method: "GET",
-        timeout: timeoutMs,
-        headers: {
-          "User-Agent": "Lanscape/0.1",
-        },
-      },
-      (res) => {
-        let body = "";
-        const maxBytes = 64 * 1024;
-        res.on("data", (chunk) => {
-          if (body.length < maxBytes) {
-            body += chunk.toString("utf8");
-          }
-        });
-        res.on("end", () => {
-          resolve(extractHtmlTitle(body));
-        });
-      },
-    );
+function resolveRedirect(baseHost, location) {
+  if (!location) return null;
+  if (/^https?:\/\//i.test(location)) {
+    try {
+      const url = new URL(location);
+      return { host: url.hostname, path: url.pathname || "/" };
+    } catch (error) {
+      return null;
+    }
+  }
+  if (location.startsWith("/")) {
+    return { host: baseHost, path: location };
+  }
+  return { host: baseHost, path: `/${location}` };
+}
 
-    req.on("timeout", () => {
-      req.destroy();
-      resolve("");
+function httpTitle(ip, timeoutMs) {
+  const maxRedirects = 3;
+
+  const requestOnce = (host, path, redirectsLeft) =>
+    new Promise((resolve) => {
+      const req = http.request(
+        {
+          host,
+          port: 80,
+          path,
+          method: "GET",
+          timeout: timeoutMs,
+          headers: {
+            "User-Agent": "Lanscape/0.1",
+          },
+        },
+        (res) => {
+          const status = res.statusCode || 0;
+          if (status >= 300 && status < 400 && redirectsLeft > 0) {
+            const redirect = resolveRedirect(host, res.headers.location);
+            if (redirect) {
+              res.resume();
+              requestOnce(redirect.host, redirect.path, redirectsLeft - 1).then(resolve);
+              return;
+            }
+          }
+
+          let body = "";
+          const maxBytes = 64 * 1024;
+          res.on("data", (chunk) => {
+            if (body.length < maxBytes) {
+              body += chunk.toString("utf8");
+            }
+          });
+          res.on("end", () => {
+            const title = extractHtmlTitle(body);
+            if (title) {
+              resolve(title);
+              return;
+            }
+            if (status >= 200 && status < 600) {
+              resolve("Server");
+              return;
+            }
+            resolve("");
+          });
+        },
+      );
+
+      req.on("timeout", () => {
+        req.destroy();
+        resolve("");
+      });
+      req.on("error", () => resolve(""));
+      req.end();
     });
-    req.on("error", () => resolve(""));
-    req.end();
-  });
+
+  return requestOnce(ip, "/", maxRedirects);
 }
 
 function normalizeMac(mac) {

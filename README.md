@@ -76,5 +76,6 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - NetBIOSは Windows のみ（`nbtstat -A`）
 - HTTPタイトルは `http://<ip>/` の `<title>`
 - `auto_name` は末尾の `.local` を自動で除去
+- HTTPがリダイレクトする場合は追従し、タイトルが取れない場合は `Server` を補完
 - MAC取得はARP/近傍テーブル依存のためVPN越しでは取得できない場合があります
 - MAC/ARP、SNMP/SSH、トポロジ推定は非対応
