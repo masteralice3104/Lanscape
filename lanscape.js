@@ -1677,7 +1677,6 @@ async function runSurvey(options) {
         record.snmp_sysname = info.sysName || "";
         record.snmp_sysdescr = info.sysDescr || "";
       }
-      }
     });
 
     await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
