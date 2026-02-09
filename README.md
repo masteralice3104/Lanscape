@@ -9,12 +9,12 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 
 ## 使い方
 - 対話式（デフォルト）: `node lanscape.js`
-	- 初回は設定ファイル作成や samples から入力ファイル生成を案内します。
+	- 初回は設定ファイル作成や入力テンプレート生成を案内します。
 	- 出力CSVの保存有無も対話で設定できます。
 	- 既定で定期更新（watch）を有効にします。
 	- 既定で space.csv を自動更新します（alive IP を追加）。
 - 実行形式（非対話）: `node lanscape.js <segments.txt> [space.csv]`
-- 例: `node lanscape.js samples/segments.txt samples/space.csv`
+- 例: `node lanscape.js segments.txt space.csv`
 
 ### オプション
 - `--timeout <ms>` pingタイムアウト（既定 1000）
@@ -69,16 +69,46 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 
 ## 入力ファイル
 ### segments.txt（必須）
-- 1行=1セグメント: `<SEGMENT_NAME><space><CIDR>`
-- 例: `LAN 192.168.100.0/24`
+1行=1セグメントのテキストファイルです。形式は **「セグメント名 + 空白 + CIDR」**。
+
+例:
+```
+LAN 192.168.100.0/24
+SITEB 192.168.101.0/24
+```
+
+ルール:
+- 空行は無視
+- 先頭/末尾の空白はトリム
+- セグメント名は空白を含まないトークン（例: `LAN`）
+- CIDR は IPv4 のみ（例: `192.168.100.0/24`）
+- 不正行はエラー終了（行番号付き）
 
 ### space.csv（任意）
-- ヘッダ必須: `ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr`（旧形式の3列も読み込み可）
-- 例:
-	- `192.168.100.204,portal,reverse-proxy`
-	- `192.168.100.1,edge,rtx210`
-- `--update-space` 有効時は、生存IPが毎回 space.csv に追記/更新されます。
-- `--space-from-segment` 有効時は `segments` を segments.txt のセグメント名で上書きします。
+ホストのメモや名前を保持するCSVです。**最小は ip/segments/name**。足りない列は空欄でもOKです。
+
+ヘッダ（推奨/自動生成）:
+```
+ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_powered_by,http_www_auth,favicon_hash,mdns_services,ssdp_server,ssdp_usn,snmp_sysname,snmp_sysdescr
+```
+
+最小ヘッダ例（旧形式）:
+```
+ip,segments,name
+```
+
+例:
+```
+192.168.100.204,portal,reverse-proxy
+192.168.100.1,edge,rtx210
+```
+
+ルール:
+- `ip` がキー（同一IPは後勝ち）
+- `name` は空欄可（空欄なら `auto_name` で補完）
+- 旧ヘッダ `ip,user_space,manual_name` も読み込み可
+- `--update-space` 有効時は、生存IPが毎回追記/更新されます
+- `--space-from-segment` 有効時は `segments` を segments.txt のセグメント名で上書き
 
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
@@ -115,6 +145,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - HTTPタイトルは `http://<ip>/` の `<title>`
 - `auto_name` は末尾の `.local` を自動で除去
 - HTTPがリダイレクトする場合は追従し、エラー/ログイン系の無意味なタイトルは採用しません（必要ならServerヘッダへフォールバック）
+- HTTPが失敗した場合は HTTPS へ自動フォールバックします
 - MAC取得はARP/近傍テーブル依存のためVPN越しでは取得できない場合があります
 - OS推定はTTL由来のため正確性は保証できません
 - SMBバナーはポート疎通確認レベルのベストエフォートです

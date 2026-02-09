@@ -6,6 +6,7 @@ const readline = require("readline");
 const dns = require("dns").promises;
 const { spawn } = require("child_process");
 const http = require("http");
+const https = require("https");
 const net = require("net");
 const tls = require("tls");
 const dgram = require("dgram");
@@ -439,7 +440,6 @@ function applyConfig(options, config, override) {
 }
 
 async function ensureSampleFiles(prompt, targetDir) {
-  const sampleDir = path.join(__dirname, "samples");
   const sampleFiles = [
     { name: "segments.txt", fallback: "LAN 192.168.100.0/24\n" },
     {
@@ -451,16 +451,11 @@ async function ensureSampleFiles(prompt, targetDir) {
 
   for (const file of sampleFiles) {
     const destPath = path.join(targetDir, file.name);
-    const sourcePath = path.join(sampleDir, file.name);
     if (fileExists(destPath)) {
       const overwrite = await askYesNo(prompt, `${file.name} を上書きしますか`, false);
       if (!overwrite) continue;
     }
-    let content = file.fallback;
-    if (fileExists(sourcePath)) {
-      content = readTextFile(sourcePath, `samples/${file.name}`);
-    }
-    fs.writeFileSync(destPath, content, "utf8");
+    fs.writeFileSync(destPath, file.fallback, "utf8");
   }
 }
 
@@ -477,7 +472,7 @@ async function interactiveSetup(baseOptions, configPath) {
       }
     }
 
-    const wantSamples = await askYesNo(prompt, "samples から入力ファイルを作成しますか", true);
+    const wantSamples = await askYesNo(prompt, "入力テンプレートを作成しますか", true);
     if (wantSamples) {
       await ensureSampleFiles(prompt, process.cwd());
     }
@@ -1136,20 +1131,20 @@ function isMeaninglessTitle(title) {
   return false;
 }
 
-function resolveRedirect(baseHost, location) {
+function resolveRedirect(baseHost, location, baseScheme) {
   if (!location) return null;
   if (/^https?:\/\//i.test(location)) {
     try {
       const url = new URL(location);
-      return { host: url.hostname, path: url.pathname || "/" };
+      return { scheme: url.protocol.replace(":", ""), host: url.hostname, path: url.pathname || "/" };
     } catch (error) {
       return null;
     }
   }
   if (location.startsWith("/")) {
-    return { host: baseHost, path: location };
+    return { scheme: baseScheme, host: baseHost, path: location };
   }
-  return { host: baseHost, path: `/${location}` };
+  return { scheme: baseScheme, host: baseHost, path: `/${location}` };
 }
 
 function faviconHash(ip, timeoutMs) {
@@ -1200,15 +1195,17 @@ function faviconHash(ip, timeoutMs) {
 function httpInfo(ip, timeoutMs) {
   const maxRedirects = 3;
 
-  const requestOnce = (host, path, redirectsLeft) =>
+  const requestOnce = (scheme, host, path, redirectsLeft) =>
     new Promise((resolve) => {
-      const req = http.request(
+      const client = scheme === "https" ? https : http;
+      const req = client.request(
         {
           host,
-          port: 80,
+          port: scheme === "https" ? 443 : 80,
           path,
           method: "GET",
           timeout: timeoutMs,
+          rejectUnauthorized: false,
           headers: {
             "User-Agent": "Lanscape/0.1",
           },
@@ -1216,10 +1213,10 @@ function httpInfo(ip, timeoutMs) {
         (res) => {
           const status = res.statusCode || 0;
           if (status >= 300 && status < 400 && redirectsLeft > 0) {
-            const redirect = resolveRedirect(host, res.headers.location);
+            const redirect = resolveRedirect(host, res.headers.location, scheme);
             if (redirect) {
               res.resume();
-              requestOnce(redirect.host, redirect.path, redirectsLeft - 1).then(resolve);
+              requestOnce(redirect.scheme, redirect.host, redirect.path, redirectsLeft - 1).then(resolve);
               return;
             }
           }
@@ -1258,7 +1255,12 @@ function httpInfo(ip, timeoutMs) {
       req.end();
     });
 
-  return requestOnce(ip, "/", maxRedirects);
+  return requestOnce("http", ip, "/", maxRedirects).then((result) => {
+    if (result.name || result.serverHeader || result.poweredBy || result.wwwAuth) {
+      return result;
+    }
+    return requestOnce("https", ip, "/", maxRedirects);
+  });
 }
 
 function normalizeMac(mac) {
