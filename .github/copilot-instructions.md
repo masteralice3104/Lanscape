@@ -104,7 +104,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 - `ip`：alive と判定したIP
 - `segments`：space.csvから（なければ空）
 - `name`：space.csvの `name`（空欄なら `auto_name` で補完）
-- `auto_name`：rdns → mdns → netbios → http → 空
+- `auto_name`：rdns → mdns → netbios → http(タイトル/Server) → cert → ssh → 空
 - `mac`：ARP/近傍テーブルからのベストエフォート取得
 - `os_guess`：TTL由来のOS推定
 - `ssh_banner`：22/tcp バナー

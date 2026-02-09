@@ -972,7 +972,7 @@ function resolveRedirect(baseHost, location) {
   return { host: baseHost, path: `/${location}` };
 }
 
-function httpTitle(ip, timeoutMs) {
+function httpName(ip, timeoutMs) {
   const maxRedirects = 3;
 
   const requestOnce = (host, path, redirectsLeft) =>
@@ -1000,6 +1000,7 @@ function httpTitle(ip, timeoutMs) {
           }
 
           let body = "";
+          const serverHeader = res.headers.server ? String(res.headers.server) : "";
           const maxBytes = 64 * 1024;
           res.on("data", (chunk) => {
             if (body.length < maxBytes) {
@@ -1010,6 +1011,11 @@ function httpTitle(ip, timeoutMs) {
             const title = extractHtmlTitle(body);
             if (title && !isMeaninglessTitle(title)) {
               resolve(title);
+              return;
+            }
+            const serverName = normalizeName(serverHeader);
+            if (serverName && !isMeaninglessTitle(serverName)) {
+              resolve(serverName);
               return;
             }
             resolve("");
@@ -1271,6 +1277,18 @@ async function runSurvey(options) {
         record.os_guess = osGuessFromTtl(record.ttl);
       }
 
+      if (options.sshBannerEnabled && !record.ssh_banner) {
+        record.ssh_banner = await sshBanner(record.ip, options.sshTimeout);
+      }
+      if (options.smbBannerEnabled && !record.smb_banner) {
+        record.smb_banner = await smbBanner(record.ip, options.smbTimeout);
+      }
+      if (options.certCnEnabled && !record.cert_cn) {
+        record.cert_cn = await certCommonName(record.ip, options.certTimeout);
+      }
+    });
+
+    await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
       if (options.dnsEnabled) {
         const rdns = normalizeName(await reverseDns(record.ip));
         if (rdns) {
@@ -1299,28 +1317,34 @@ async function runSurvey(options) {
       }
 
       if (options.httpTitleEnabled) {
-        const title = normalizeName(await httpTitle(record.ip, options.httpTimeout));
-        if (title) {
-          record.auto_name = title;
+        const httpResult = normalizeName(await httpName(record.ip, options.httpTimeout));
+        if (httpResult) {
+          record.auto_name = httpResult;
           record.source = "http";
+          return;
+        }
+      }
+
+      if (options.certCnEnabled && record.cert_cn) {
+        const cn = normalizeName(record.cert_cn);
+        if (cn) {
+          record.auto_name = cn;
+          record.source = "cert";
+          return;
+        }
+      }
+
+      if (options.sshBannerEnabled && record.ssh_banner) {
+        const banner = normalizeName(record.ssh_banner);
+        if (banner) {
+          record.auto_name = banner;
+          record.source = "ssh";
           return;
         }
       }
 
       record.auto_name = "";
       record.source = "none";
-    });
-
-    await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
-      if (options.sshBannerEnabled && !record.ssh_banner) {
-        record.ssh_banner = await sshBanner(record.ip, options.sshTimeout);
-      }
-      if (options.smbBannerEnabled && !record.smb_banner) {
-        record.smb_banner = await smbBanner(record.ip, options.smbTimeout);
-      }
-      if (options.certCnEnabled && !record.cert_cn) {
-        record.cert_cn = await certCommonName(record.ip, options.certTimeout);
-      }
     });
 
     for (const record of records) {

@@ -76,7 +76,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
 - `name`: space.csv の `name`（空欄なら `auto_name` で補完）
-- `auto_name`: rDNS → mDNS → NetBIOS → HTTPタイトル → 空 の優先順
+- `auto_name`: rDNS → mDNS → NetBIOS → HTTPタイトル/Serverヘッダ → 証明書CN → SSHバナー → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
 - `os_guess`: TTL からのOS推定（ベストエフォート）
 - `ssh_banner`: SSHのバナー（22/tcp）
@@ -91,7 +91,7 @@ LANを空間として把握するために、既知のIPv4セグメントを能�
 - NetBIOSは Windows のみ（`nbtstat -A`）
 - HTTPタイトルは `http://<ip>/` の `<title>`
 - `auto_name` は末尾の `.local` を自動で除去
-- HTTPがリダイレクトする場合は追従し、エラー/ログイン系の無意味なタイトルは採用しません
+- HTTPがリダイレクトする場合は追従し、エラー/ログイン系の無意味なタイトルは採用しません（必要ならServerヘッダへフォールバック）
 - MAC取得はARP/近傍テーブル依存のためVPN越しでは取得できない場合があります
 - OS推定はTTL由来のため正確性は保証できません
 - SMBバナーはポート疎通確認レベルのベストエフォートです
