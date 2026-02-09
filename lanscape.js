@@ -986,6 +986,15 @@ function normalizeName(name) {
   return withoutDot.replace(/\.local$/i, "");
 }
 
+async function dnsLookupName(ip) {
+  try {
+    const result = await dns.lookupService(ip, 0);
+    return result && result.hostname ? result.hostname : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function runWithConcurrency(items, limit, worker) {
   return new Promise((resolve, reject) => {
     const results = [];
@@ -1337,21 +1346,9 @@ function pingResolvedName(ip, timeoutMs) {
       clearTimeout(timer);
       const buffer = Buffer.concat(chunks);
       const output = iconv.decode(buffer, "cp932");
-      const matchEn = output.match(/Pinging\s+([^\s\[]+)\s*\[/i);
-      if (matchEn && matchEn[1]) {
-        resolve(matchEn[1]);
-        return;
-      }
-      const normalizedOutput = output.replace(/\u3000/g, " ");
-      const lines = normalizedOutput.split(/\r?\n/);
-      const lineForIp =
-        lines.find((line) => line.includes(`[${ip}]`)) ||
-        lines.find((line) => line.includes("[") && line.includes("]")) ||
-        "";
-      const matchBracket = lineForIp.match(new RegExp(`^(.*?)[\s]*\\[${ip.replace(/\./g, "\\.")}\\]`));
-      if (matchBracket && matchBracket[1]) {
-        const token = matchBracket[1].trim().split(/\s+/).pop();
-        resolve(token || "");
+      const matchAny = output.match(/\b([A-Za-z0-9][A-Za-z0-9-_.]{1,})\s*\[/);
+      if (matchAny && matchAny[1]) {
+        resolve(matchAny[1]);
         return;
       }
       resolve("");
@@ -1762,6 +1759,13 @@ async function runSurvey(options) {
     });
 
     await runWithConcurrency(records, options.dnsConcurrency, async (record) => {
+      const lookupName = normalizeName(await dnsLookupName(record.ip));
+      if (lookupName) {
+        record.auto_name = lookupName;
+        record.source = "lookup";
+        return;
+      }
+
       if (options.mdnsEnabled) {
         const mdnsRaw = await mdnsReverse(record.ip, options.mdnsTimeout);
         const mdnsName = normalizeName(mdnsRaw);
