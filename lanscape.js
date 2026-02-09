@@ -1111,6 +1111,17 @@ function extractHtmlTitle(html) {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
+function extractMetaRefreshUrl(html) {
+  const metaMatch = html.match(/<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*>/i);
+  if (!metaMatch) return "";
+  const contentMatch = metaMatch[0].match(/content\s*=\s*["']([^"']+)["']/i);
+  if (!contentMatch) return "";
+  const content = contentMatch[1];
+  const urlMatch = content.match(/url\s*=\s*([^;]+)$/i);
+  if (!urlMatch) return "";
+  return urlMatch[1].trim();
+}
+
 function isMeaninglessTitle(title) {
   if (!title) return true;
   const value = title.trim().toLowerCase();
@@ -1232,6 +1243,14 @@ function httpInfo(ip, timeoutMs) {
             }
           });
           res.on("end", () => {
+            if (redirectsLeft > 0) {
+              const metaUrl = extractMetaRefreshUrl(body);
+              const metaRedirect = resolveRedirect(host, metaUrl, scheme);
+              if (metaRedirect) {
+                requestOnce(metaRedirect.scheme, metaRedirect.host, metaRedirect.path, redirectsLeft - 1).then(resolve);
+                return;
+              }
+            }
             const title = extractHtmlTitle(body);
             if (title && !isMeaninglessTitle(title)) {
               resolve({ name: title, serverHeader, poweredBy, wwwAuth });
