@@ -1770,20 +1770,20 @@ async function runSurvey(options) {
         }
       }
 
-      if (options.netbiosEnabled) {
-        const nb = normalizeName(await netbiosName(record.ip, options.httpTimeout));
-        if (nb) {
-          record.auto_name = nb;
-          record.source = "netbios";
-          return;
-        }
-      }
-
       if (options.pingNameEnabled) {
         const pingName = normalizeName(await pingResolvedName(record.ip, options.timeout));
         if (pingName) {
           record.auto_name = pingName;
           record.source = "ping";
+          return;
+        }
+      }
+
+      if (options.netbiosEnabled) {
+        const nb = normalizeName(await netbiosName(record.ip, options.httpTimeout));
+        if (nb) {
+          record.auto_name = nb;
+          record.source = "netbios";
           return;
         }
       }
