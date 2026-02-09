@@ -817,39 +817,6 @@ function enumerateHosts(ipInt, prefix) {
 
   let start = network;
   let end = broadcast;
-    if (existing) {
-      merged.set(ip, {
-        segments: nextSegments,
-        role: existing.role || "",
-        name: existing.name || "",
-        auto_name: record.auto_name || existing.auto_name || "",
-        mac: record.mac || existing.mac || "",
-        os_guess: record.os_guess || existing.os_guess || "",
-        ssh_banner: record.ssh_banner || existing.ssh_banner || "",
-        smb_banner: record.smb_banner || existing.smb_banner || "",
-        cert_cn: record.cert_cn || existing.cert_cn || "",
-        cert_san: record.cert_san || existing.cert_san || "",
-        http_server: record.http_server || existing.http_server || "",
-        http_status: record.http_status || existing.http_status || "",
-        http_location: record.http_location || existing.http_location || "",
-      });
-    } else {
-      merged.set(ip, {
-        segments: nextSegments,
-        role: "",
-        name: "",
-        auto_name: record.auto_name || "",
-        mac: record.mac || "",
-        os_guess: record.os_guess || "",
-        ssh_banner: record.ssh_banner || "",
-        smb_banner: record.smb_banner || "",
-        cert_cn: record.cert_cn || "",
-        cert_san: record.cert_san || "",
-        http_server: record.http_server || "",
-        http_status: record.http_status || "",
-        http_location: record.http_location || "",
-      });
-    }
   const withoutDot = cleaned.replace(/\.$/, "");
   return withoutDot.replace(/\.local$/i, "");
 }
