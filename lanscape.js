@@ -1330,20 +1330,37 @@ function sleep(ms) {
 
 async function runSurvey(options) {
   const segmentsContent = readTextFile(options.segmentsPath, "segments.txt");
+  const segments = parseSegments(segmentsContent);
+  const spaceMap = loadSpaceMap(options.spacePath, options.updateSpaceEnabled);
+  const outputStream = options.outputPath
+    ? fs.createWriteStream(options.outputPath, { encoding: "utf8" })
+    : null;
 
-  while (true) {
-    const startedAt = new Date();
-    process.stderr.write(`--- survey start ${startedAt.toISOString()} ---\n`);
-    await runSurvey(options);
-    const finishedAt = new Date();
-    process.stderr.write(`--- survey done  ${finishedAt.toISOString()} ---\n`);
-    await sleep(options.watchIntervalMs);
-  }
+  const writeLine = (line) => {
+    process.stdout.write(`${line}\n`);
+    if (outputStream) {
+      outputStream.write(`${line}\n`);
+    }
+  };
+
+  writeLine(
+    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source",
+  );
+
+  const recordMap = new Map();
+  const macTable = options.macEnabled ? await loadMacTable(options.macTimeout) : new Map();
+
+  for (const segment of segments) {
+    const hosts = enumerateHosts(segment.ipInt, segment.prefix);
+    const aliveIps = [];
+    const ttlMap = new Map();
+
+    try {
+      await runWithConcurrency(hosts, options.pingConcurrency, async (ip) => {
+        const result = await pingAliveWithTtl(ip, options.timeout);
+        if (result.alive) {
+          aliveIps.push(ip);
           if (result.ttl) ttlMap.set(ip, result.ttl);
-
-main().catch((error) => {
-  fatal(error && error.message ? error.message : String(error));
-});
         }
       });
     } catch (error) {
@@ -1396,7 +1413,6 @@ main().catch((error) => {
       if (options.osGuessEnabled && record.ttl) {
         record.os_guess = osGuessFromTtl(record.ttl);
       }
-
       if (options.sshBannerEnabled && !record.ssh_banner) {
         record.ssh_banner = await sshBanner(record.ip, options.sshTimeout);
       }
@@ -1456,27 +1472,21 @@ main().catch((error) => {
         }
       }
 
-      if (options.pingNameEnabled) {
-        const pingName = normalizeName(await pingResolvedName(record.ip, options.timeout));
-        if (pingName) {
-          record.auto_name = pingName;
-          record.source = "ping";
+      if (options.netbiosEnabled) {
+        const nb = normalizeName(await netbiosName(record.ip, options.httpTimeout));
+        if (nb) {
+          record.auto_name = nb;
+          record.source = "netbios";
           return;
         }
-      }
-
-      if (record.source === "http-fp" && record.auto_name) {
-        return;
       }
 
       if (options.httpTitleEnabled && record.http_name) {
         const httpResult = normalizeName(record.http_name);
         if (httpResult) {
-          if (!record.auto_name || isGenericName(record.auto_name)) {
-            record.auto_name = httpResult;
-            record.source = "http";
-            return;
-          }
+          record.auto_name = httpResult;
+          record.source = "http";
+          return;
         }
       }
 
