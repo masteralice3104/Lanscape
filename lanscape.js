@@ -383,7 +383,7 @@ async function ensureSampleFiles(prompt, targetDir) {
     {
       name: "space.csv",
       fallback:
-        "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location\n",
+        "ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location\n",
     },
   ];
 
@@ -597,6 +597,7 @@ function parseSpaceCsv(content) {
   const allowed = new Set([
     "ip",
     "segments",
+    "role",
     "name",
     "auto_name",
     "mac",
@@ -639,6 +640,7 @@ function parseSpaceCsv(content) {
     }
     map.set(ip, {
       segments: row.segments || "",
+      role: row.role || "",
       name: row.name || "",
       auto_name: row.auto_name || "",
       mac: row.mac || "",
@@ -708,12 +710,13 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
   }
 
   const rows = [
-    "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location",
+    "ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location",
   ];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
     const entry = merged.get(ip) || {
       segments: "",
+      role: "",
       name: "",
       auto_name: "",
       mac: "",
@@ -730,6 +733,7 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
       [
         ip,
         entry.segments || "",
+        entry.role || "",
         entry.name || "",
         entry.auto_name || "",
         entry.mac || "",
@@ -813,37 +817,39 @@ function enumerateHosts(ipInt, prefix) {
 
   let start = network;
   let end = broadcast;
-  if (prefix <= 24) {
-    start = network + 1;
-    end = broadcast - 1;
-  }
-
-  if (start > end) {
-    return [];
-  }
-
-  const hosts = [];
-  for (let current = start; current <= end; current += 1) {
-    hosts.push(intToIp(current >>> 0));
-  }
-  return hosts;
-}
-
-function csvEscape(value) {
-  const text = String(value ?? "");
-  const escaped = text.replace(/"/g, '""');
-  if (/[",\r\n]/.test(escaped)) {
-    return `"${escaped}"`;
-  }
-  return escaped;
-}
-
-function normalizeName(name) {
-  if (!name) return "";
-  const trimmed = String(name).trim();
-  if (!trimmed) return "";
-  const firstPart = trimmed.split(",")[0].trim();
-  const cleaned = firstPart.replace(/^(DNS:|IP Address:)/i, "").trim();
+    if (existing) {
+      merged.set(ip, {
+        segments: nextSegments,
+        role: existing.role || "",
+        name: existing.name || "",
+        auto_name: record.auto_name || existing.auto_name || "",
+        mac: record.mac || existing.mac || "",
+        os_guess: record.os_guess || existing.os_guess || "",
+        ssh_banner: record.ssh_banner || existing.ssh_banner || "",
+        smb_banner: record.smb_banner || existing.smb_banner || "",
+        cert_cn: record.cert_cn || existing.cert_cn || "",
+        cert_san: record.cert_san || existing.cert_san || "",
+        http_server: record.http_server || existing.http_server || "",
+        http_status: record.http_status || existing.http_status || "",
+        http_location: record.http_location || existing.http_location || "",
+      });
+    } else {
+      merged.set(ip, {
+        segments: nextSegments,
+        role: "",
+        name: "",
+        auto_name: record.auto_name || "",
+        mac: record.mac || "",
+        os_guess: record.os_guess || "",
+        ssh_banner: record.ssh_banner || "",
+        smb_banner: record.smb_banner || "",
+        cert_cn: record.cert_cn || "",
+        cert_san: record.cert_san || "",
+        http_server: record.http_server || "",
+        http_status: record.http_status || "",
+        http_location: record.http_location || "",
+      });
+    }
   const withoutDot = cleaned.replace(/\.$/, "");
   return withoutDot.replace(/\.local$/i, "");
 }
@@ -1344,7 +1350,7 @@ async function runSurvey(options) {
   };
 
   writeLine(
-    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source",
+    "segment,ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source",
   );
 
   const recordMap = new Map();
@@ -1375,6 +1381,7 @@ async function runSurvey(options) {
     const records = aliveIps.map((ip) => {
       const entry = spaceMap.get(ip) || {
         segments: "",
+        role: "",
         name: "",
         auto_name: "",
         mac: "",
@@ -1391,6 +1398,7 @@ async function runSurvey(options) {
         segment: segment.name,
         ip,
         segments: entry.segments || "",
+        role: entry.role || "",
         name: entry.name || "",
         auto_name: "",
         mac: entry.mac || macTable.get(ip) || "",
@@ -1533,6 +1541,7 @@ async function runSurvey(options) {
         record.segment,
         record.ip,
         record.segments,
+        record.role,
         record.name,
         record.auto_name,
         record.mac,

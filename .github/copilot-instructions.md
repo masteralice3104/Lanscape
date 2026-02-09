@@ -35,7 +35,7 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 
 ### 2.2 space.csv（任意）
 - ユーザ定義の「空間（segments）」と「手動名（name）」付与用
-- ヘッダ必須：`ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location`（旧: `ip,user_space,manual_name`）
+- ヘッダ必須：`ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location`（旧: `ip,user_space,manual_name`）
   - `name` は空でもよい（空欄なら `auto_name` で補完）
 - 例：
   - `192.168.100.204,portal,reverse-proxy`
@@ -98,11 +98,12 @@ v0.1 は “まず動く最小” を優先し、以下を満たす：
 ### 5.2 CSV列（固定）
 ヘッダ行を必ず出力する：
 
-`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source`
+`segment,ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source`
 
 - `segment`：segments.txt のセグメント名
 - `ip`：alive と判定したIP
 - `segments`：space.csvから（なければ空）
+- `role`：space.csvの役割（任意）
 - `name`：space.csvの `name`（空欄なら `auto_name` で補完）
 - `auto_name`：lookupService → mdns → ping -a → rdns → netbios → http(タイトル/Server) → cert → ssh → 空
 - `cert_san`：TLS証明書SAN

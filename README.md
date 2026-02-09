@@ -78,7 +78,7 @@ SITEB 192.168.101.0/24
 
 ヘッダ（推奨/自動生成）:
 ```
-ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location
+ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location
 ```
 
 最小ヘッダ例（旧形式）:
@@ -102,11 +102,12 @@ ip,segments,name
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
 
-`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source`
+`segment,ip,segments,role,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source`
 
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
+- `role`: space.csv の `role`
 - `name`: space.csv の `name`（手動入力のみ）
 - `auto_name`: DNS lookupService → mDNS → ping -a → rDNS → NetBIOS → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
