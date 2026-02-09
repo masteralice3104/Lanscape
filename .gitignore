@@ -3,3 +3,4 @@ node_modules/
 lanscape.config.json
 segments.txt
 space.csv
+*.xlsx
