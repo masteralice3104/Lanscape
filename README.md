@@ -78,7 +78,7 @@ SITEB 192.168.101.0/24
 
 ヘッダ（推奨/自動生成）:
 ```
-ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server
+ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location
 ```
 
 最小ヘッダ例（旧形式）:
@@ -102,13 +102,13 @@ ip,segments,name
 ## 出力CSV
 標準出力に以下の列を固定で出力します。
 
-`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,source`
+`segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source`
 
 - `segment`: segments.txt のセグメント名
 - `ip`: alive と判定したIP
 - `segments`: space.csv の `segments`
 - `name`: space.csv の `name`（空欄なら `auto_name` で補完）
-- `auto_name`: DNS lookupService → mDNS → ping -a → rDNS → NetBIOS → HTTP本文/ヘッダの簡易判定 → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
+- `auto_name`: DNS lookupService → mDNS → ping -a → rDNS → NetBIOS → HTTPタイトル/Serverヘッダ → 証明書CN/SAN → SSHバナー → 空 の優先順
 - `mac`: 取得できた場合のMACアドレス（ベストエフォート）
 - `os_guess`: TTL からのOS推定（ベストエフォート）
 - `ssh_banner`: SSHのバナー（22/tcp）
@@ -116,7 +116,9 @@ ip,segments,name
 - `cert_cn`: TLS証明書のCN（443/tcp）
 - `cert_san`: TLS証明書のSAN
 - `http_server`: HTTPのServerヘッダ
-- `source`: `manual` / `lookup` / `rdns` / `mdns` / `netbios` / `ping` / `http-fp` / `http` / `cert` / `ssh` / `none`
+- `http_status`: HTTPステータスコード
+- `http_location`: HTTPのLocationヘッダ（リダイレクト先）
+- `source`: `manual` / `lookup` / `rdns` / `mdns` / `netbios` / `ping` / `http` / `cert` / `ssh` / `none`
 
 ## 制約（v0.1）
 - OS標準 `ping` を起動して判定（OSごとに引数が異なる）

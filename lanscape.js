@@ -383,7 +383,7 @@ async function ensureSampleFiles(prompt, targetDir) {
     {
       name: "space.csv",
       fallback:
-        "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server\n",
+        "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location\n",
     },
   ];
 
@@ -606,6 +606,8 @@ function parseSpaceCsv(content) {
     "cert_cn",
     "cert_san",
     "http_server",
+    "http_status",
+    "http_location",
   ]);
   if (!normalizedHeaders.some((value) => value === "segments")) {
     fatal("space.csv のヘッダに segments（または user_space）が必要です。");
@@ -646,6 +648,8 @@ function parseSpaceCsv(content) {
       cert_cn: row.cert_cn || "",
       cert_san: row.cert_san || "",
       http_server: row.http_server || "",
+      http_status: row.http_status || "",
+      http_location: row.http_location || "",
     });
   }
 
@@ -682,6 +686,8 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         cert_cn: record.cert_cn || existing.cert_cn || "",
         cert_san: record.cert_san || existing.cert_san || "",
         http_server: record.http_server || existing.http_server || "",
+        http_status: record.http_status || existing.http_status || "",
+        http_location: record.http_location || existing.http_location || "",
       });
     } else {
       merged.set(ip, {
@@ -695,12 +701,14 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         cert_cn: record.cert_cn || "",
         cert_san: record.cert_san || "",
         http_server: record.http_server || "",
+        http_status: record.http_status || "",
+        http_location: record.http_location || "",
       });
     }
   }
 
   const rows = [
-    "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server",
+    "ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location",
   ];
   const sortedIps = Array.from(merged.keys()).sort((a, b) => ipToInt(a) - ipToInt(b));
   for (const ip of sortedIps) {
@@ -715,6 +723,8 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
       cert_cn: "",
       cert_san: "",
       http_server: "",
+      http_status: "",
+      http_location: "",
     };
     rows.push(
       [
@@ -729,6 +739,8 @@ function updateSpaceCsv(spacePath, spaceMap, recordMap, spaceFromSegment) {
         entry.cert_cn || "",
         entry.cert_san || "",
         entry.http_server || "",
+        entry.http_status || "",
+        entry.http_location || "",
       ]
         .map(csvEscape)
         .join(","),
@@ -986,47 +998,6 @@ function extractHtmlTitle(html) {
   return match[1].replace(/\s+/g, " ").trim();
 }
 
-function isGenericName(name) {
-  if (!name) return true;
-  const value = String(name).trim().toLowerCase();
-  if (!value) return true;
-  const generic = [
-    "router",
-    "login",
-    "buffalo.setup",
-    "arcadyan httpd 1.0",
-    "httpd",
-    "mini_httpd",
-  ];
-  if (generic.includes(value)) return true;
-  if (/\b(router|login|httpd|setup)\b/i.test(value)) return true;
-  return false;
-}
-
-function detectHttpFingerprint(title, serverHeader, body) {
-  const text = `${title || ""}\n${serverHeader || ""}\n${body || ""}`.toLowerCase();
-  const patterns = [
-    { regex: /yamaha|\brtx\b/, name: "YAMAHA RTX" },
-    { regex: /buffalo|buffalo\.setup/, name: "BUFFALO" },
-    { regex: /arcadyan/, name: "Arcadyan Router" },
-    { regex: /tp-?link|tplink/, name: "TP-Link Router" },
-    { regex: /netgear/, name: "NETGEAR" },
-    { regex: /asus|asustek/, name: "ASUS Router" },
-    { regex: /synology/, name: "Synology NAS" },
-    { regex: /qnap/, name: "QNAP NAS" },
-    { regex: /i-?o data|iodata/, name: "I-O DATA" },
-    { regex: /aterm|nec\s*aterm|nec\b/, name: "NEC Aterm" },
-    { regex: /mikrotik|routeros/, name: "MikroTik Router" },
-    { regex: /openwrt/, name: "OpenWrt" },
-    { regex: /ubiquiti|unifi/, name: "Ubiquiti UniFi" },
-    { regex: /fortinet|fortigate/, name: "Fortinet" },
-    { regex: /cisco|linksys/, name: "Cisco/Linksys" },
-    { regex: /draytek/, name: "DrayTek" },
-    { regex: /zyxel/, name: "Zyxel" },
-  ];
-  const found = patterns.find((pattern) => pattern.regex.test(text));
-  return found ? found.name : "";
-}
 
 function extractMetaRefreshUrl(html) {
   const metaMatch = html.match(/<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*>/i);
@@ -1095,6 +1066,7 @@ function httpInfo(ip, timeoutMs) {
         },
         (res) => {
           const status = res.statusCode || 0;
+          const locationHeader = res.headers.location ? String(res.headers.location) : "";
           if (status >= 300 && status < 400 && redirectsLeft > 0) {
             const redirect = resolveRedirect(host, res.headers.location, scheme);
             if (redirect) {
@@ -1123,15 +1095,15 @@ function httpInfo(ip, timeoutMs) {
             }
             const title = extractHtmlTitle(body);
             if (title && !isMeaninglessTitle(title)) {
-              resolve({ name: title, serverHeader, body });
+              resolve({ name: title, serverHeader, body, status, location: locationHeader });
               return;
             }
             const serverName = normalizeName(serverHeader);
             if (serverName && !isMeaninglessTitle(serverName)) {
-              resolve({ name: serverName, serverHeader, body });
+              resolve({ name: serverName, serverHeader, body, status, location: locationHeader });
               return;
             }
-            resolve({ name: "", serverHeader, body });
+            resolve({ name: "", serverHeader, body, status, location: locationHeader });
           });
         },
       );
@@ -1372,7 +1344,7 @@ async function runSurvey(options) {
   };
 
   writeLine(
-    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,source",
+    "segment,ip,segments,name,auto_name,mac,os_guess,ssh_banner,smb_banner,cert_cn,cert_san,http_server,http_status,http_location,source",
   );
 
   const recordMap = new Map();
@@ -1414,6 +1386,8 @@ async function runSurvey(options) {
         cert_cn: "",
         cert_san: "",
         http_server: "",
+        http_status: "",
+        http_location: "",
       };
       return {
         segment: segment.name,
@@ -1428,6 +1402,8 @@ async function runSurvey(options) {
         cert_cn: entry.cert_cn || "",
         cert_san: entry.cert_san || "",
         http_server: entry.http_server || "",
+        http_status: entry.http_status || "",
+        http_location: entry.http_location || "",
         source: "none",
         ttl: ttlMap.get(ip) || null,
         mdns_host: "",
@@ -1455,11 +1431,8 @@ async function runSurvey(options) {
         const info = await httpInfo(record.ip, options.httpTimeout);
         record.http_name = info.name || "";
         record.http_server = info.serverHeader || "";
-        const fingerprint = detectHttpFingerprint(info.name, info.serverHeader, info.body);
-        if (fingerprint) {
-          record.auto_name = fingerprint;
-          record.source = "http-fp";
-        }
+        record.http_status = info.status ? String(info.status) : "";
+        record.http_location = info.location || "";
       }
     });
 
@@ -1581,6 +1554,8 @@ async function runSurvey(options) {
         record.cert_cn,
         record.cert_san,
         record.http_server,
+        record.http_status,
+        record.http_location,
         record.source,
       ]
         .map(csvEscape)
